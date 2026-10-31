@@ -1,6 +1,6 @@
 [package]
 name = "uartis"
-version = "1.4.2"
+version = "1.0.0"
 description = "Uartis - cross-platform serial debugging tool"
 authors = ["Sourcex"]
 license = "Apache-2.0"
