@@ -1,0 +1,1609 @@
+use crate::framing::FrameSegmenter;
+use crate::types::*;
+use anyhow::{anyhow, Result};
+use chrono::Utc;
+use log::{debug, error, info, warn};
+use serialport::{SerialPort, SerialPortType};
+use std::collections::{HashSet, VecDeque};
+use std::fs::{File, OpenOptions, create_dir_all};
+use std::io::Write;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::thread;
+use std::time::{Duration, Instant};
+
+pub struct SerialManager {
+    current_port: Option<Box<dyn SerialPort>>,
+    config: Option<SerialConfig>,
+    is_connected: bool,
+    port_name: Option<String>,
+    logs: Arc<Mutex<VecDeque<LogEntry>>>,
+    stats: Arc<Mutex<SerialStats>>,
+    shutdown_flag: Arc<AtomicBool>,
+    max_log_entries: Arc<Mutex<usize>>,
+    frame_segmentation_config: Arc<Mutex<FrameSegmentationConfig>>,
+    // Recording file handles
+    text_file: Arc<Mutex<Option<File>>>,
+    raw_file: Arc<Mutex<Option<File>>>,
+    text_file_path: Arc<Mutex<Option<String>>>,
+    raw_file_path: Arc<Mutex<Option<String>>>,
+    log_directory: Arc<Mutex<String>>,
+    // Timezone offset in minutes for recording timestamps
+    timezone_offset_minutes: Arc<Mutex<i32>>,
+    // Display settings for pre-formatted log rendering
+    display_settings: Arc<Mutex<DisplaySettings>>,
+    // Port opening seam (system opener in production, scripted fake in tests)
+    port_opener: Arc<dyn PortOpener>,
+    // Reader thread lifecycle (RFC #3 Step 3)
+    reader_handle: Option<thread::JoinHandle<()>>,
+    // Fatal read error written by the reader thread right before it dies
+    reader_error: Arc<Mutex<Option<String>>>,
+    // Surfaced via ConnectionStatus until the next connect
+    connection_error: Option<String>,
+    // Frame bus for event push (RFC #3 Step 4); read/send paths publish,
+    // the bridge pump thread consumes and emits `serial://frames`.
+    bus: Arc<crate::bus::FrameBus>,
+    // Bumped on every clear_logs; snapshots carry it to detect
+    // clear-during-snapshot resurrection.
+    log_epoch: u64,
+}
+
+#[derive(Debug, Default)]
+struct SerialStats {
+    bytes_sent: u64,
+    bytes_received: u64,
+    connection_time: Option<chrono::DateTime<Utc>>,
+}
+
+/// Abstraction over how a serial port handle is opened (RFC #3 Step 1 seam).
+/// Production uses `SystemPortOpener`; tests inject scripted fakes that drive
+/// the real reader thread.
+pub(crate) trait PortOpener: Send + Sync {
+    fn open(&self, port_name: &str, config: &SerialConfig) -> Result<Box<dyn SerialPort>>;
+}
+
+struct SystemPortOpener;
+
+impl PortOpener for SystemPortOpener {
+    fn open(&self, port_name: &str, config: &SerialConfig) -> Result<Box<dyn SerialPort>> {
+        let builder = serialport::new(port_name, config.baud_rate)
+            .data_bits(match config.data_bits {
+                DataBits::Five => serialport::DataBits::Five,
+                DataBits::Six => serialport::DataBits::Six,
+                DataBits::Seven => serialport::DataBits::Seven,
+                DataBits::Eight => serialport::DataBits::Eight,
+            })
+            .parity(match config.parity {
+                Parity::None => serialport::Parity::None,
+                Parity::Odd => serialport::Parity::Odd,
+                Parity::Even => serialport::Parity::Even,
+                Parity::Mark => serialport::Parity::None,
+                Parity::Space => serialport::Parity::None,
+            })
+            .stop_bits(match config.stop_bits {
+                StopBits::One => serialport::StopBits::One,
+                StopBits::OnePointFive => serialport::StopBits::One,
+                StopBits::Two => serialport::StopBits::Two,
+            })
+            .flow_control(match config.flow_control {
+                FlowControl::None => serialport::FlowControl::None,
+                FlowControl::Software => serialport::FlowControl::Software,
+                FlowControl::Hardware => serialport::FlowControl::Hardware,
+            })
+            .timeout(Duration::from_millis(50)); // Short timeout for responsive reading
+
+        Ok(builder.open()?)
+    }
+}
+
+/// Write-side timeout (POSIX only, see `connect`). Much longer than the
+/// 50 ms read timeout so large or bursty payloads tolerate a full kernel TX
+/// buffer draining at line rate instead of failing spuriously.
+#[cfg(unix)]
+const WRITE_TIMEOUT_MS: u64 = 1000;
+
+impl SerialManager {
+    pub fn new() -> Self {
+        // Default log directory - will be overridden by frontend settings
+        let default_log_dir = dirs::document_dir()
+            .map(|p| p.join("SerialLogs"))
+            .unwrap_or_else(|| PathBuf::from("./SerialLogs"))
+            .to_string_lossy()
+            .to_string();
+
+        Self {
+            current_port: None,
+            config: None,
+            is_connected: false,
+            port_name: None,
+            logs: Arc::new(Mutex::new(VecDeque::new())),
+            stats: Arc::new(Mutex::new(SerialStats::default())),
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
+            max_log_entries: Arc::new(Mutex::new(1000)),
+            frame_segmentation_config: Arc::new(Mutex::new(FrameSegmentationConfig::default())),
+            text_file: Arc::new(Mutex::new(None)),
+            raw_file: Arc::new(Mutex::new(None)),
+            text_file_path: Arc::new(Mutex::new(None)),
+            raw_file_path: Arc::new(Mutex::new(None)),
+            log_directory: Arc::new(Mutex::new(default_log_dir)),
+            timezone_offset_minutes: Arc::new(Mutex::new(0)),
+            display_settings: Arc::new(Mutex::new(DisplaySettings::default())),
+            port_opener: Arc::new(SystemPortOpener),
+            reader_handle: None,
+            reader_error: Arc::new(Mutex::new(None)),
+            connection_error: None,
+            bus: Arc::new(crate::bus::FrameBus::new()),
+            log_epoch: 0,
+        }
+    }
+
+    /// Test-only constructor: inject a scripted port opener.
+    #[cfg(test)]
+    fn with_port_opener(mut self, opener: Arc<dyn PortOpener>) -> Self {
+        self.port_opener = opener;
+        self
+    }
+
+    pub fn list_available_ports() -> Result<Vec<SerialPortInfo>> {
+        let ports = serialport::available_ports()?;
+        let mut port_infos = Vec::new();
+
+        for port in ports {
+            let port_info = SerialPortInfo {
+                port_name: port.port_name.clone(),
+                port_type: match &port.port_type {
+                    SerialPortType::UsbPort(_) => "USB".to_string(),
+                    SerialPortType::BluetoothPort => "Bluetooth".to_string(),
+                    SerialPortType::PciPort => "PCI".to_string(),
+                    SerialPortType::Unknown => "Unknown".to_string(),
+                },
+                description: match &port.port_type {
+                    SerialPortType::UsbPort(usb) => usb.product.clone(),
+                    _ => None,
+                },
+                manufacturer: match &port.port_type {
+                    SerialPortType::UsbPort(usb) => usb.manufacturer.clone(),
+                    _ => None,
+                },
+                product: match &port.port_type {
+                    SerialPortType::UsbPort(usb) => usb.product.clone(),
+                    _ => None,
+                },
+                serial_number: match &port.port_type {
+                    SerialPortType::UsbPort(usb) => usb.serial_number.clone(),
+                    _ => None,
+                },
+                vid: match &port.port_type {
+                    SerialPortType::UsbPort(usb) => Some(usb.vid),
+                    _ => None,
+                },
+                pid: match &port.port_type {
+                    SerialPortType::UsbPort(usb) => Some(usb.pid),
+                    _ => None,
+                },
+            };
+            port_infos.push(port_info);
+        }
+
+        Ok(sanitize_listed_ports(port_infos))
+    }
+
+    pub fn connect(&mut self, port_name: &str, config: SerialConfig) -> Result<()> {
+        if self.is_connected {
+            let handle = self.disconnect()?;
+            if let Some(h) = handle {
+                Self::join_reader_bounded(h);
+            }
+        }
+        // Defensive: a reader that outlived a previous bounded join must be
+        // dead before the OS will let us reopen the same device (EBUSY race).
+        if let Some(h) = self.reader_handle.take() {
+            Self::join_reader_bounded(h);
+        }
+        *self.reader_error.lock().unwrap() = None;
+        self.connection_error = None;
+
+        // `mut` is only exercised by the POSIX write-timeout tweak below;
+        // Windows shares timeouts across cloned handles and leaves it alone.
+        #[allow(unused_mut)]
+        let mut port = self.port_opener.open(port_name, &config)?;
+        info!("Successfully opened serial port: {}", port_name);
+
+        // New session: seq restarts at 1 (RFC #3 Step 4).
+        self.bus.start_session();
+
+        // Reset and start reading thread
+        self.shutdown_flag.store(false, Ordering::Relaxed);
+        let logs = Arc::clone(&self.logs);
+        let stats = Arc::clone(&self.stats);
+        let max_log_entries = Arc::clone(&self.max_log_entries);
+        let frame_segmentation_config = Arc::clone(&self.frame_segmentation_config);
+        let text_file = Arc::clone(&self.text_file);
+        let raw_file = Arc::clone(&self.raw_file);
+        let timezone_offset = Arc::clone(&self.timezone_offset_minutes);
+        let display_settings = Arc::clone(&self.display_settings);
+        let port_name_clone = port_name.to_string();
+        let shutdown_flag = Arc::clone(&self.shutdown_flag);
+        let reader_error = Arc::clone(&self.reader_error);
+        let bus = Arc::clone(&self.bus);
+        let mut read_port = port.try_clone()?;
+
+        // Give the write side a longer timeout than the read-friendly 50 ms.
+        // On POSIX the timeout lives on each handle, so this does not slow
+        // the read loop; on Windows cloned handles share COMMTIMEOUTS, so we
+        // leave the write side at the builder's value there.
+        #[cfg(unix)]
+        if let Err(e) = port.set_timeout(Duration::from_millis(WRITE_TIMEOUT_MS)) {
+            warn!("Failed to set write timeout on {}: {}", port_name, e);
+        }
+
+        let reader_handle = thread::spawn(move || {
+            let mut read_buffer = [0u8; 1024];
+            let initial_config = frame_segmentation_config.lock()
+                .map(|guard| guard.clone())
+                .unwrap_or_default();
+            let mut segmenter = FrameSegmenter::new(initial_config, Instant::now());
+
+            // Single frame-emission path (replaces the four duplicated
+            // blocks): text recording -> display formatting -> log buffer
+            // -> stats -> bus publish (dual-write 存续期, RFC #3 Step 4).
+            let emit_frame = |frame_data: Vec<u8>, disp_settings: &DisplaySettings| {
+                // Write to text recording file with timestamp and RX label
+                if let Ok(mut guard) = text_file.lock() {
+                    if let Some(ref mut file) = *guard {
+                        let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                        let timestamp = format_timestamp_with_offset(tz_offset);
+                        let text = String::from_utf8_lossy(&frame_data);
+                        let _ = writeln!(file, "[{}] RX: {}", timestamp, text);
+                    }
+                }
+
+                // Allocate the bus frame first so the LogEntry carries the
+                // same seq/session the event subscribers see.
+                let frame = bus.alloc_frame(Direction::Received, frame_data.clone());
+
+                // Format display text and timestamp based on current settings
+                let tz_offset = *timezone_offset.lock().unwrap_or_else(|e| e.into_inner());
+                let display_text = format_data_for_display(&frame_data, disp_settings);
+                let timestamp_formatted = if disp_settings.show_timestamps {
+                    Some(format_timestamp_with_offset(tz_offset))
+                } else {
+                    None
+                };
+
+                let data_len = frame_data.len() as u64;
+                let log_entry = LogEntry {
+                    timestamp: Utc::now(),
+                    direction: Direction::Received,
+                    data: frame_data,
+                    format: DataFormat::Text,
+                    port_name: port_name_clone.clone(),
+                    display_text,
+                    timestamp_formatted,
+                    seq: frame.seq,
+                    session: frame.session,
+                };
+
+                if let Ok(mut logs_guard) = logs.lock() {
+                    logs_guard.push_back(log_entry);
+                    let max_entries = *max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
+                    while logs_guard.len() > max_entries {
+                        logs_guard.pop_front();
+                    }
+                }
+
+                if let Ok(mut stats_guard) = stats.lock() {
+                    stats_guard.bytes_received += data_len;
+                }
+
+                // Event fan-out comes last: the buffer write must land first
+                // so a snapshot racing this batch never misses the entry
+                // (subscribers dedupe by seq anyway).
+                bus.publish(&frame);
+            };
+
+            loop {
+                // Check shutdown flag
+                if shutdown_flag.load(Ordering::Relaxed) {
+                    debug!("Reading thread shutting down for port: {}", port_name_clone);
+                    break;
+                }
+
+                // Get current segmentation config (legacy re-read each iteration)
+                let seg_config = frame_segmentation_config.lock()
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default();
+                segmenter.set_config(seg_config);
+
+                // Get current display settings for formatting
+                let disp_settings = display_settings.lock()
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default();
+
+                match read_port.read(&mut read_buffer) {
+                    Ok(bytes_read) if bytes_read > 0 => {
+                        let received_bytes = &read_buffer[..bytes_read];
+
+                        // Write to raw recording file (raw bytes, pre-framing tap)
+                        if let Ok(mut guard) = raw_file.lock() {
+                            if let Some(ref mut file) = *guard {
+                                let _ = file.write_all(received_bytes);
+                            }
+                        }
+
+                        // A read that returns fresh bytes may have blocked
+                        // through an idle gap LONGER than the segmentation
+                        // timeout without ever surfacing TimedOut (e.g. a
+                        // 28 ms gap at high duty cycle vs the 50 ms read
+                        // timeout — Issue #9). Close the pending frame on
+                        // the observed gap BEFORE feeding, so timeout
+                        // semantics hold regardless of read granularity.
+                        if let Some(frame) = segmenter.flush_if_idle(Instant::now()) {
+                            emit_frame(frame, &disp_settings);
+                        }
+
+                        for frame in segmenter.feed(received_bytes, Instant::now()) {
+                            emit_frame(frame, &disp_settings);
+                        }
+                    }
+                    Ok(_) => {
+                        if let Some(frame) = segmenter.flush_if_idle(Instant::now()) {
+                            emit_frame(frame, &disp_settings);
+                        }
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                        if let Some(frame) = segmenter.flush_if_idle(Instant::now()) {
+                            emit_frame(frame, &disp_settings);
+                        }
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                    Err(e) => {
+                        error!("Error reading from serial port: {}", e);
+                        *reader_error.lock().unwrap() = Some(format!("{}", e));
+                        break;
+                    }
+                }
+            }
+
+            // Salvage the pending partial frame on ANY exit (shutdown flag or
+            // fatal error) so the tail of the stream is not silently dropped
+            // (RFC #3 Step 3).
+            if let Some(frame) = segmenter.flush() {
+                let disp_settings = display_settings.lock()
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default();
+                emit_frame(frame, &disp_settings);
+            }
+        });
+
+        self.reader_handle = Some(reader_handle);
+        self.current_port = Some(port);
+        self.config = Some(config);
+        self.is_connected = true;
+        self.port_name = Some(port_name.to_string());
+        
+        // Set connection time in stats
+        if let Ok(mut stats_guard) = self.stats.lock() {
+            stats_guard.connection_time = Some(Utc::now());
+        }
+
+        // Don't add connection log to reduce clutter
+        info!("Connected to {} at {} baud", port_name, self.config.as_ref().unwrap().baud_rate);
+
+        Ok(())
+    }
+
+    /// Disconnect. Returns the reader thread handle so the CALLER can join
+    /// it outside the big manager lock (RFC #3 Step 3) — see
+    /// `join_reader_bounded`. State cleanup here is fast and non-blocking.
+    pub fn disconnect(&mut self) -> Result<Option<thread::JoinHandle<()>>> {
+        if self.is_connected {
+            // Signal reading thread to stop
+            self.shutdown_flag.store(true, Ordering::Relaxed);
+
+            // Stop all recordings before disconnecting
+            self.stop_all_recordings();
+
+            // Close the write handle; the reader's cloned fd closes when the
+            // thread exits.
+            self.current_port = None;
+
+            self.is_connected = false;
+
+            // A manual disconnect supersedes any concurrent reader death:
+            // don't surface it as an unexpected loss afterwards.
+            *self.reader_error.lock().unwrap() = None;
+
+            if let Some(port_name) = &self.port_name {
+                // Don't add disconnection log to reduce clutter
+                info!("Disconnected from {}", port_name);
+            }
+
+            self.port_name = None;
+            self.config = None;
+
+            // Reset stats
+            if let Ok(mut stats_guard) = self.stats.lock() {
+                *stats_guard = SerialStats::default();
+            }
+
+            info!("Serial port disconnected");
+        }
+        Ok(self.reader_handle.take())
+    }
+
+    /// Join a reader thread with a bounded wait. The reader wakes at least
+    /// every ~50 ms (port read timeout), so 500 ms is generous; if it still
+    /// has not exited we drop the handle (detaching the thread) rather than
+    /// block — the thread dies on its own once the shutdown flag is set and
+    /// the port fd is closed.
+    pub fn join_reader_bounded(handle: thread::JoinHandle<()>) {
+        let deadline = Instant::now() + Duration::from_millis(500);
+        loop {
+            if handle.is_finished() {
+                let _ = handle.join();
+                return;
+            }
+            if Instant::now() >= deadline {
+                warn!("Reader thread did not exit within 500ms; detaching");
+                return;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    pub fn send_data(&mut self, data: Vec<u8>) -> Result<()> {
+        if !self.is_connected {
+            return Err(anyhow!("No port is currently open"));
+        }
+
+        if let Some(ref mut port) = self.current_port {
+            port.write_all(&data)?;
+
+            // Write to recording files (TX data)
+            self.write_to_text_file(&data, Direction::Sent);
+            self.write_to_raw_file(&data);
+
+            // Update sent bytes statistics
+            if let Ok(mut stats_guard) = self.stats.lock() {
+                stats_guard.bytes_sent += data.len() as u64;
+            }
+
+            // TX shares the session's single seq sequence (transcript
+            // interleaving preserved, RFC #3 Step 4).
+            let frame = self.bus.alloc_frame(Direction::Sent, data.clone());
+
+            // Get current display settings for formatting
+            let disp_settings = self.get_display_settings();
+            let tz_offset = *self.timezone_offset_minutes.lock().unwrap_or_else(|e| e.into_inner());
+            let display_text = format_data_for_display(&data, &disp_settings);
+            let timestamp_formatted = if disp_settings.show_timestamps {
+                Some(format_timestamp_with_offset(tz_offset))
+            } else {
+                None
+            };
+
+            // Add to logs
+            self.add_log(LogEntry {
+                timestamp: Utc::now(),
+                direction: Direction::Sent,
+                data,
+                format: DataFormat::Text,
+                port_name: self.port_name.clone().unwrap_or_default(),
+                display_text,
+                timestamp_formatted,
+                seq: frame.seq,
+                session: frame.session,
+            });
+
+            // Buffer-first, then fan out (see emit_frame).
+            self.bus.publish(&frame);
+
+            Ok(())
+        } else {
+            Err(anyhow!("No port available"))
+        }
+    }
+
+    /// Lazy reader-death detection (RFC #3 Step 3): the reader thread records
+    /// a fatal error in `reader_error` before dying; the next status poll
+    /// (frontend: every second) turns that into a visible disconnect.
+    pub fn get_status(&mut self) -> ConnectionStatus {
+        if self.is_connected {
+            let death = self.reader_error.lock().unwrap().clone();
+            if let Some(err) = death {
+                warn!("Reader thread died, marking connection lost: {}", err);
+                self.connection_error = Some(err);
+                self.is_connected = false;
+                // Free the write handle and harvest the (finished) reader so
+                // the device can be reopened immediately.
+                self.current_port = None;
+                self.stop_all_recordings();
+                if let Some(h) = self.reader_handle.take() {
+                    let _ = h.join();
+                }
+            }
+        }
+
+        let (bytes_sent, bytes_received, connection_time) = if let Ok(stats_guard) = self.stats.lock() {
+            (stats_guard.bytes_sent, stats_guard.bytes_received, stats_guard.connection_time)
+        } else {
+            (0, 0, None)
+        };
+
+        ConnectionStatus {
+            is_connected: self.is_connected,
+            port_name: self.port_name.clone(),
+            config: self.config.clone(),
+            bytes_sent,
+            bytes_received,
+            connection_time,
+            connection_error: self.connection_error.clone(),
+        }
+    }
+
+    pub fn get_logs(&self) -> Vec<LogEntry> {
+        if let Ok(logs) = self.logs.lock() {
+            logs.iter().cloned().collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn clear_logs(&mut self) -> u64 {
+        if let Ok(mut logs) = self.logs.lock() {
+            logs.clear();
+        }
+        // Bump the epoch so any snapshot started before this clear is
+        // recognized as stale by the frontend (no resurrection).
+        self.log_epoch += 1;
+        self.log_epoch
+    }
+
+    /// Initial-alignment snapshot for the event-driven log view.
+    pub fn get_logs_snapshot(&self) -> LogsSnapshot {
+        LogsSnapshot {
+            epoch: self.log_epoch,
+            session: self.bus.current_session(),
+            entries: self.get_logs(),
+        }
+    }
+
+    /// Event bus handle for the bridge pump (RFC #3 Step 4).
+    pub fn bus(&self) -> Arc<crate::bus::FrameBus> {
+        Arc::clone(&self.bus)
+    }
+
+    /// Shared display settings, for the bridge pump's decoration pass.
+    pub fn display_settings_handle(&self) -> Arc<Mutex<DisplaySettings>> {
+        Arc::clone(&self.display_settings)
+    }
+
+    /// Shared timezone offset, for the bridge pump's decoration pass.
+    pub fn timezone_offset_handle(&self) -> Arc<Mutex<i32>> {
+        Arc::clone(&self.timezone_offset_minutes)
+    }
+
+    pub fn export_logs(&self, file_path: &str, format: ExportFormat, timezone_offset_minutes: i32) -> Result<()> {
+        use std::fs::File;
+        use std::io::Write;
+        use std::path::Path;
+        use chrono::FixedOffset;
+
+        // Ensure the parent directory exists
+        let path = Path::new(file_path);
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                create_dir_all(parent)?;
+            }
+        }
+
+        let logs = self.get_logs();
+        let mut file = File::create(file_path)?;
+
+        // Create timezone offset for formatting
+        let offset_seconds = timezone_offset_minutes * 60;
+        let tz_offset = FixedOffset::east_opt(offset_seconds).unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
+
+        match format {
+            ExportFormat::Txt => {
+                let now_with_tz = Utc::now().with_timezone(&tz_offset);
+                writeln!(file, "RSerial Debug Assistant - Log Export")?;
+                writeln!(file, "Generated: {}", now_with_tz.format("%Y-%m-%d %H:%M:%S %z"))?;
+                writeln!(file, "{}", "=".repeat(60))?;
+                writeln!(file)?;
+
+                for log in logs {
+                    let timestamp_with_tz = log.timestamp.with_timezone(&tz_offset);
+                    writeln!(
+                        file,
+                        "[{}] {}: {}",
+                        timestamp_with_tz.format("%H:%M:%S%.3f"),
+                        match log.direction {
+                            Direction::Sent => "TX",
+                            Direction::Received => "RX",
+                        },
+                        String::from_utf8_lossy(&log.data)
+                    )?;
+                }
+            }
+            ExportFormat::Csv => {
+                writeln!(file, "timestamp,direction,port,data")?;
+                for log in logs {
+                    let timestamp_with_tz = log.timestamp.with_timezone(&tz_offset);
+                    writeln!(
+                        file,
+                        "{},{:?},{},\"{}\"",
+                        timestamp_with_tz.format("%Y-%m-%d %H:%M:%S%.3f"),
+                        log.direction,
+                        log.port_name,
+                        String::from_utf8_lossy(&log.data).replace("\"", "\"\"")
+                    )?;
+                }
+            }
+            ExportFormat::Json => {
+                let json_data = serde_json::to_string_pretty(&logs)?;
+                file.write_all(json_data.as_bytes())?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn add_log(&mut self, log_entry: LogEntry) {
+        if let Ok(mut logs) = self.logs.lock() {
+            logs.push_back(log_entry);
+            let max_entries = *self.max_log_entries.lock().unwrap_or_else(|e| e.into_inner());
+            while logs.len() > max_entries {
+                logs.pop_front();
+            }
+        }
+    }
+
+    pub fn set_max_log_entries(&self, max_entries: usize) {
+        let max_entries = max_entries.clamp(100, 10000);
+        if let Ok(mut limit) = self.max_log_entries.lock() {
+            *limit = max_entries;
+        }
+        // Trim existing logs if necessary
+        if let Ok(mut logs) = self.logs.lock() {
+            while logs.len() > max_entries {
+                logs.pop_front();
+            }
+        }
+    }
+
+    pub fn get_max_log_entries(&self) -> usize {
+        *self.max_log_entries.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn set_frame_segmentation_config(&self, config: FrameSegmentationConfig) {
+        let config = FrameSegmentationConfig {
+            timeout_ms: config.timeout_ms.clamp(10, 1000),
+            ..config
+        };
+        if let Ok(mut guard) = self.frame_segmentation_config.lock() {
+            *guard = config;
+        }
+    }
+
+    pub fn get_frame_segmentation_config(&self) -> FrameSegmentationConfig {
+        self.frame_segmentation_config
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+
+    // Display settings methods
+
+    /// Set the display format (Txt or Hex)
+    pub fn set_display_format(&self, format: ReceiveDisplayFormat) {
+        if let Ok(mut guard) = self.display_settings.lock() {
+            guard.format = format;
+        }
+    }
+
+    /// Set the text encoding (UTF-8 or GBK)
+    pub fn set_text_encoding(&self, encoding: TextEncoding) {
+        if let Ok(mut guard) = self.display_settings.lock() {
+            guard.encoding = encoding;
+        }
+    }
+
+    /// Set the special character visualization config
+    pub fn set_special_char_config(&self, config: SpecialCharConfig) {
+        if let Ok(mut guard) = self.display_settings.lock() {
+            guard.special_char_config = config;
+        }
+    }
+
+    /// Set whether to show timestamps
+    pub fn set_show_timestamps(&self, show: bool) {
+        if let Ok(mut guard) = self.display_settings.lock() {
+            guard.show_timestamps = show;
+        }
+    }
+
+    /// Get current display settings
+    pub fn get_display_settings(&self) -> DisplaySettings {
+        self.display_settings
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+
+    // Recording methods
+
+    /// Set the log directory path (called from frontend settings)
+    pub fn set_log_directory(&self, path: String) {
+        if let Ok(mut guard) = self.log_directory.lock() {
+            *guard = path;
+        }
+    }
+
+    /// Get the current log directory path
+    pub fn get_log_directory(&self) -> String {
+        self.log_directory
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_else(|_| String::from("./SerialLogs"))
+    }
+
+    /// Set the timezone offset in minutes for recording timestamps
+    pub fn set_timezone_offset(&self, offset_minutes: i32) {
+        if let Ok(mut guard) = self.timezone_offset_minutes.lock() {
+            *guard = offset_minutes;
+        }
+    }
+
+    /// Generate a filename with port name and timestamp
+    fn generate_recording_filename(&self, extension: &str) -> Result<PathBuf> {
+        let log_dir = self.get_log_directory();
+        let dir_path = PathBuf::from(&log_dir);
+
+        // Create directory if it doesn't exist
+        if !dir_path.exists() {
+            create_dir_all(&dir_path)?;
+        }
+
+        let port_name = self.port_name.clone().unwrap_or_else(|| "UNKNOWN".to_string());
+        // Sanitize port name for filename (replace special characters)
+        let safe_port_name = port_name.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+
+        let tz_offset = *self.timezone_offset_minutes.lock().unwrap_or_else(|e| e.into_inner());
+        let timestamp = format_date_for_filename_with_offset(tz_offset);
+        let filename = format!("{}_{}.{}", safe_port_name, timestamp, extension);
+
+        Ok(dir_path.join(filename))
+    }
+
+    /// Start text recording - creates a new text file and begins recording
+    pub fn start_text_recording(&self) -> Result<String> {
+        // Check if already recording
+        if let Ok(guard) = self.text_file.lock() {
+            if guard.is_some() {
+                return Err(anyhow!("Text recording is already active"));
+            }
+        }
+
+        let file_path = self.generate_recording_filename("txt")?;
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&file_path)?;
+
+        let path_str = file_path.to_string_lossy().to_string();
+
+        if let Ok(mut guard) = self.text_file.lock() {
+            *guard = Some(file);
+        }
+        if let Ok(mut guard) = self.text_file_path.lock() {
+            *guard = Some(path_str.clone());
+        }
+
+        info!("Started text recording to: {}", path_str);
+        Ok(path_str)
+    }
+
+    /// Stop text recording - closes the file
+    pub fn stop_text_recording(&self) -> Result<()> {
+        if let Ok(mut guard) = self.text_file.lock() {
+            if let Some(mut file) = guard.take() {
+                file.flush()?;
+            }
+        }
+        if let Ok(mut guard) = self.text_file_path.lock() {
+            if let Some(path) = guard.take() {
+                info!("Stopped text recording: {}", path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Start raw binary recording - creates a new binary file and begins recording
+    pub fn start_raw_recording(&self) -> Result<String> {
+        // Check if already recording
+        if let Ok(guard) = self.raw_file.lock() {
+            if guard.is_some() {
+                return Err(anyhow!("Raw recording is already active"));
+            }
+        }
+
+        let file_path = self.generate_recording_filename("bin")?;
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&file_path)?;
+
+        let path_str = file_path.to_string_lossy().to_string();
+
+        if let Ok(mut guard) = self.raw_file.lock() {
+            *guard = Some(file);
+        }
+        if let Ok(mut guard) = self.raw_file_path.lock() {
+            *guard = Some(path_str.clone());
+        }
+
+        info!("Started raw recording to: {}", path_str);
+        Ok(path_str)
+    }
+
+    /// Stop raw binary recording - closes the file
+    pub fn stop_raw_recording(&self) -> Result<()> {
+        if let Ok(mut guard) = self.raw_file.lock() {
+            if let Some(mut file) = guard.take() {
+                file.flush()?;
+            }
+        }
+        if let Ok(mut guard) = self.raw_file_path.lock() {
+            if let Some(path) = guard.take() {
+                info!("Stopped raw recording: {}", path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Get the current recording status
+    pub fn get_recording_status(&self) -> RecordingStatus {
+        let text_recording_active = self.text_file
+            .lock()
+            .map(|guard| guard.is_some())
+            .unwrap_or(false);
+        let raw_recording_active = self.raw_file
+            .lock()
+            .map(|guard| guard.is_some())
+            .unwrap_or(false);
+        let text_file_path = self.text_file_path
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or(None);
+        let raw_file_path = self.raw_file_path
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or(None);
+
+        RecordingStatus {
+            text_recording_active,
+            raw_recording_active,
+            text_file_path,
+            raw_file_path,
+        }
+    }
+
+    /// Write data to text recording file with timestamp, direction, and newline
+    pub fn write_to_text_file(&self, data: &[u8], direction: Direction) {
+        if let Ok(mut guard) = self.text_file.lock() {
+            if let Some(ref mut file) = *guard {
+                let tz_offset = *self.timezone_offset_minutes.lock().unwrap_or_else(|e| e.into_inner());
+                let timestamp = format_timestamp_with_offset(tz_offset);
+                let dir_label = match direction {
+                    Direction::Sent => "TX",
+                    Direction::Received => "RX",
+                };
+                let text = String::from_utf8_lossy(data);
+                // Write formatted line with timestamp, direction, content, and newline
+                if let Err(e) = writeln!(file, "[{}] {}: {}", timestamp, dir_label, text) {
+                    warn!("Error writing to text recording file: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Write data to raw binary recording file
+    pub fn write_to_raw_file(&self, data: &[u8]) {
+        if let Ok(mut guard) = self.raw_file.lock() {
+            if let Some(ref mut file) = *guard {
+                if let Err(e) = file.write_all(data) {
+                    warn!("Error writing to raw recording file: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Stop all recordings (called on disconnect)
+    pub fn stop_all_recordings(&self) {
+        let _ = self.stop_text_recording();
+        let _ = self.stop_raw_recording();
+    }
+}
+
+/// Format current UTC time with timezone offset applied
+pub(crate) fn format_timestamp_with_offset(offset_minutes: i32) -> String {
+    use chrono::FixedOffset;
+    let offset_seconds = offset_minutes * 60;
+    let tz_offset = FixedOffset::east_opt(offset_seconds).unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
+    let now_with_tz = Utc::now().with_timezone(&tz_offset);
+    now_with_tz.format("%H:%M:%S%.3f").to_string()
+}
+
+/// Format a date for filenames with timezone offset applied
+fn format_date_for_filename_with_offset(offset_minutes: i32) -> String {
+    use chrono::FixedOffset;
+    let offset_seconds = offset_minutes * 60;
+    let tz_offset = FixedOffset::east_opt(offset_seconds).unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
+    let now_with_tz = Utc::now().with_timezone(&tz_offset);
+    now_with_tz.format("%Y-%m-%d_%H-%M-%S").to_string()
+}
+
+/// Format bytes as hexadecimal string (e.g., "48 65 6C 6C 6F")
+fn format_bytes_as_hex(data: &[u8]) -> String {
+    data.iter()
+        .map(|b| format!("{:02X}", b))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Format bytes as text with special character visualization
+fn format_bytes_as_text(data: &[u8], encoding: &TextEncoding, special_chars: &SpecialCharConfig) -> String {
+    // First decode the bytes using the specified encoding
+    let text = match encoding {
+        TextEncoding::Utf8 => {
+            // Try strict UTF-8 decoding first, fallback to lossy if it fails
+            match std::str::from_utf8(data) {
+                Ok(s) => s.to_string(),
+                Err(_) => {
+                    // If UTF-8 decoding fails, fall back to hex display
+                    return format_bytes_as_hex(data);
+                }
+            }
+        }
+        TextEncoding::Gbk => {
+            let (decoded, _, had_errors) = encoding_rs::GBK.decode(data);
+            if had_errors {
+                // If GBK decoding has errors, fall back to hex display
+                return format_bytes_as_hex(data);
+            }
+            decoded.into_owned()
+        }
+    };
+
+    // Apply special character visualization if enabled
+    if !special_chars.enabled {
+        return text;
+    }
+
+    let mut result = text;
+
+    if special_chars.convert_lf {
+        result = result.replace('\n', "␊");
+    }
+    if special_chars.convert_cr {
+        result = result.replace('\r', "␍");
+    }
+    if special_chars.convert_tab {
+        result = result.replace('\t', "␉");
+    }
+    if special_chars.convert_null {
+        result = result.replace('\0', "␀");
+    }
+    if special_chars.convert_esc {
+        result = result.replace('\x1B', "␛");
+    }
+    if special_chars.convert_spaces {
+        // Only show spaces at end of lines or multiple consecutive spaces
+        // Trailing spaces
+        let mut new_result = String::new();
+        for line in result.split('\n') {
+            if !new_result.is_empty() {
+                new_result.push('\n');
+            }
+            // Handle trailing spaces
+            let trimmed_end = line.trim_end_matches(' ');
+            let trailing_spaces = line.len() - trimmed_end.len();
+            new_result.push_str(trimmed_end);
+            new_result.push_str(&"␣".repeat(trailing_spaces));
+        }
+        // Handle multiple consecutive spaces in the middle
+        let mut final_result = String::new();
+        let mut space_count = 0;
+        for ch in new_result.chars() {
+            if ch == ' ' {
+                space_count += 1;
+            } else {
+                if space_count >= 2 {
+                    final_result.push_str(&"␣".repeat(space_count));
+                } else if space_count == 1 {
+                    final_result.push(' ');
+                }
+                space_count = 0;
+                final_result.push(ch);
+            }
+        }
+        // Handle trailing spaces that weren't converted
+        if space_count >= 2 {
+            final_result.push_str(&"␣".repeat(space_count));
+        } else if space_count == 1 {
+            final_result.push(' ');
+        }
+        result = final_result;
+    }
+
+    result
+}
+
+/// Deduplicate macOS callout/tty pairs, drop system virtual ports, and put
+/// USB adapters first so the UI auto-selects a useful device.
+fn sanitize_listed_ports(ports: Vec<SerialPortInfo>) -> Vec<SerialPortInfo> {
+    let ports = filter_macos_tty_duplicates(ports);
+    let ports = filter_macos_system_virtual_ports(ports);
+    sort_usb_ports_first(ports)
+}
+
+/// macOS exposes each serial device twice: `/dev/cu.*` (callout, for outbound
+/// I/O) and `/dev/tty.*` (waits for carrier detect). Keep callout devices and
+/// drop the matching tty entry. Ports on other platforms are unchanged.
+fn filter_macos_tty_duplicates(ports: Vec<SerialPortInfo>) -> Vec<SerialPortInfo> {
+    let cu_suffixes: HashSet<String> = ports
+        .iter()
+        .filter_map(|p| p.port_name.strip_prefix("/dev/cu.").map(str::to_string))
+        .collect();
+
+    ports
+        .into_iter()
+        .filter(|p| match p.port_name.strip_prefix("/dev/tty.") {
+            Some(suffix) => !cu_suffixes.contains(suffix),
+            None => true,
+        })
+        .collect()
+}
+
+/// Hide macOS nodes that are never useful as a debug serial adapter.
+fn filter_macos_system_virtual_ports(ports: Vec<SerialPortInfo>) -> Vec<SerialPortInfo> {
+    const HIDDEN: &[&str] = &["debug-console", "Bluetooth-Incoming-Port"];
+    ports
+        .into_iter()
+        .filter(|p| {
+            !HIDDEN.iter().any(|suffix| {
+                p.port_name.ends_with(suffix)
+                    || p.port_name.ends_with(&format!(".{suffix}"))
+            })
+        })
+        .collect()
+}
+
+fn sort_usb_ports_first(mut ports: Vec<SerialPortInfo>) -> Vec<SerialPortInfo> {
+    ports.sort_by(|a, b| {
+        let rank = |p: &SerialPortInfo| if p.port_type == "USB" { 0 } else { 1 };
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.port_name.cmp(&b.port_name))
+    });
+    ports
+}
+
+/// Format data based on display settings
+pub(crate) fn format_data_for_display(data: &[u8], settings: &DisplaySettings) -> String {
+    match settings.format {
+        ReceiveDisplayFormat::Hex => format_bytes_as_hex(data),
+        ReceiveDisplayFormat::Txt => format_bytes_as_text(data, &settings.encoding, &settings.special_char_config),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn port(name: &str) -> SerialPortInfo {
+        port_with_type(name, "USB")
+    }
+
+    fn port_with_type(name: &str, port_type: &str) -> SerialPortInfo {
+        SerialPortInfo {
+            port_name: name.to_string(),
+            port_type: port_type.to_string(),
+            description: None,
+            manufacturer: None,
+            product: None,
+            serial_number: None,
+            vid: None,
+            pid: None,
+        }
+    }
+
+    fn names(ports: &[SerialPortInfo]) -> Vec<&str> {
+        ports.iter().map(|p| p.port_name.as_str()).collect()
+    }
+
+    #[test]
+    fn drops_tty_when_matching_cu_exists() {
+        let filtered = filter_macos_tty_duplicates(vec![
+            port("/dev/cu.debug-console"),
+            port("/dev/tty.debug-console"),
+            port("/dev/cu.usbserial-140"),
+            port("/dev/tty.usbserial-140"),
+        ]);
+
+        assert_eq!(
+            names(&filtered),
+            vec!["/dev/cu.debug-console", "/dev/cu.usbserial-140"]
+        );
+    }
+
+    #[test]
+    fn keeps_tty_when_no_matching_cu_exists() {
+        let filtered = filter_macos_tty_duplicates(vec![port("/dev/tty.usbserial-140")]);
+        assert_eq!(names(&filtered), vec!["/dev/tty.usbserial-140"]);
+    }
+
+    #[test]
+    fn leaves_windows_and_linux_ports_unchanged() {
+        let filtered = filter_macos_tty_duplicates(vec![
+            port("COM3"),
+            port("/dev/ttyUSB0"),
+            port("/dev/ttyACM0"),
+        ]);
+
+        assert_eq!(
+            names(&filtered),
+            vec!["COM3", "/dev/ttyUSB0", "/dev/ttyACM0"]
+        );
+    }
+
+    #[test]
+    fn hides_macos_system_virtual_ports() {
+        let filtered = sanitize_listed_ports(vec![
+            port("/dev/cu.debug-console"),
+            port("/dev/cu.Bluetooth-Incoming-Port"),
+            port("/dev/cu.usbserial-140"),
+            port_with_type("/dev/cu.HUAWEIFreeBudsPro3", "Unknown"),
+        ]);
+
+        assert_eq!(names(&filtered), vec!["/dev/cu.usbserial-140", "/dev/cu.HUAWEIFreeBudsPro3"]);
+    }
+
+    #[test]
+    fn lists_usb_ports_before_others() {
+        let filtered = sanitize_listed_ports(vec![
+            port_with_type("/dev/cu.HUAWEIFreeBudsPro3", "Unknown"),
+            port("/dev/cu.usbserial-140"),
+        ]);
+
+        assert_eq!(names(&filtered), vec!["/dev/cu.usbserial-140", "/dev/cu.HUAWEIFreeBudsPro3"]);
+    }
+
+    // ===== Scripted-port golden harness (RFC #3, Step 1) =====
+    // Drives the REAL reader thread through a fake port and asserts on the
+    // frames that land in the log buffer, pinning current framing behavior
+    // (quirks included) before Step 2 rewires the loop onto FrameSegmenter.
+
+    use std::io::{self, Read, Write};
+
+    enum ScriptEvent {
+        /// Next read() returns these bytes.
+        Bytes(Vec<u8>),
+        /// Next read() blocks for `delay_ms` (as POSIX read does when bytes
+        /// arrive mid-wait), THEN returns these bytes. Models a high-duty-
+        ///-cycle stream whose idle gap never surfaces as TimedOut (#9).
+        DelayedBytes { delay_ms: u64, bytes: Vec<u8> },
+        /// Next read() fails with a non-timeout error (kills the reader thread).
+        Fail,
+    }
+
+    /// Fake SerialPort driven by a script. An exhausted script idles forever
+    /// (returns TimedOut), mimicking a real quiet port. Writes are recorded.
+    #[derive(Clone)]
+    struct ScriptedPort {
+        name: String,
+        events: Arc<Mutex<VecDeque<ScriptEvent>>>,
+        written: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl ScriptedPort {
+        fn new(name: &str, script: Vec<ScriptEvent>) -> Self {
+            Self {
+                name: name.to_string(),
+                events: Arc::new(Mutex::new(script.into_iter().collect())),
+                written: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl Read for ScriptedPort {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let next = self.events.lock().unwrap().pop_front();
+            match next {
+                Some(ScriptEvent::Bytes(bytes)) => {
+                    // Scripts keep chunks smaller than the reader's 1024-byte buffer.
+                    assert!(
+                        bytes.len() <= buf.len(),
+                        "script chunk {} bytes exceeds read buffer {}",
+                        bytes.len(),
+                        buf.len()
+                    );
+                    buf[..bytes.len()].copy_from_slice(&bytes);
+                    Ok(bytes.len())
+                }
+                Some(ScriptEvent::DelayedBytes { delay_ms, bytes }) => {
+                    assert!(
+                        bytes.len() <= buf.len(),
+                        "script chunk {} bytes exceeds read buffer {}",
+                        bytes.len(),
+                        buf.len()
+                    );
+                    thread::sleep(Duration::from_millis(delay_ms));
+                    buf[..bytes.len()].copy_from_slice(&bytes);
+                    Ok(bytes.len())
+                }
+                Some(ScriptEvent::Fail) => {
+                    Err(io::Error::new(io::ErrorKind::Other, "scripted failure"))
+                }
+                None => Err(io::Error::new(io::ErrorKind::TimedOut, "script idle")),
+            }
+        }
+    }
+
+    impl Write for ScriptedPort {
+        fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+            self.written.lock().unwrap().extend_from_slice(data);
+            Ok(data.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl SerialPort for ScriptedPort {
+        fn name(&self) -> Option<String> {
+            Some(self.name.clone())
+        }
+        fn baud_rate(&self) -> serialport::Result<u32> {
+            Ok(115200)
+        }
+        fn data_bits(&self) -> serialport::Result<serialport::DataBits> {
+            Ok(serialport::DataBits::Eight)
+        }
+        fn flow_control(&self) -> serialport::Result<serialport::FlowControl> {
+            Ok(serialport::FlowControl::None)
+        }
+        fn parity(&self) -> serialport::Result<serialport::Parity> {
+            Ok(serialport::Parity::None)
+        }
+        fn stop_bits(&self) -> serialport::Result<serialport::StopBits> {
+            Ok(serialport::StopBits::One)
+        }
+        fn timeout(&self) -> Duration {
+            Duration::from_millis(50)
+        }
+        fn set_baud_rate(&mut self, _baud_rate: u32) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_data_bits(&mut self, _data_bits: serialport::DataBits) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_flow_control(
+            &mut self,
+            _flow_control: serialport::FlowControl,
+        ) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_parity(&mut self, _parity: serialport::Parity) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_stop_bits(&mut self, _stop_bits: serialport::StopBits) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn set_timeout(&mut self, _timeout: Duration) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn write_request_to_send(&mut self, _level: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn write_data_terminal_ready(&mut self, _level: bool) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn read_clear_to_send(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_data_set_ready(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_ring_indicator(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn read_carrier_detect(&mut self) -> serialport::Result<bool> {
+            Ok(false)
+        }
+        fn bytes_to_read(&self) -> serialport::Result<u32> {
+            Ok(0)
+        }
+        fn bytes_to_write(&self) -> serialport::Result<u32> {
+            Ok(0)
+        }
+        fn clear(&self, _buffer_to_clear: serialport::ClearBuffer) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn try_clone(&self) -> serialport::Result<Box<dyn SerialPort>> {
+            Ok(Box::new(self.clone()))
+        }
+        fn set_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+        fn clear_break(&self) -> serialport::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct ScriptedOpener {
+        port: ScriptedPort,
+    }
+
+    impl PortOpener for ScriptedOpener {
+        fn open(&self, _port_name: &str, _config: &SerialConfig) -> Result<Box<dyn SerialPort>> {
+            Ok(Box::new(self.port.clone()))
+        }
+    }
+
+    fn seg_timeout() -> FrameSegmentationConfig {
+        FrameSegmentationConfig {
+            mode: FrameSegmentationMode::Timeout,
+            timeout_ms: 10,
+            delimiter: FrameDelimiter::AnyNewline,
+        }
+    }
+
+    fn seg_combined(delimiter: FrameDelimiter) -> FrameSegmentationConfig {
+        FrameSegmentationConfig {
+            mode: FrameSegmentationMode::Combined,
+            timeout_ms: 10,
+            delimiter,
+        }
+    }
+
+    /// Connect a manager to a scripted port, run the script through the real
+    /// reader thread, and return the log buffer once it holds `expect_frames`
+    /// entries (plus a settle window to catch any unexpected extra frames).
+    fn run_script(script: Vec<ScriptEvent>, seg: FrameSegmentationConfig, expect_frames: usize) -> Vec<LogEntry> {
+        let port = ScriptedPort::new("SCRIPT", script);
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.set_frame_segmentation_config(seg);
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut logs = manager.get_logs();
+        while logs.len() < expect_frames && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+            logs = manager.get_logs();
+        }
+        // Settle window: any mis-framed extra frame shows up here.
+        thread::sleep(Duration::from_millis(150));
+        let logs = manager.get_logs();
+        manager.disconnect().unwrap();
+        logs
+    }
+
+    fn frame_bytes(logs: &[LogEntry]) -> Vec<Vec<u8>> {
+        logs.iter().map(|l| l.data.clone()).collect()
+    }
+
+    #[test]
+    fn golden_timeout_mode_single_frame() {
+        let logs = run_script(vec![ScriptEvent::Bytes(b"hello".to_vec())], seg_timeout(), 1);
+        assert_eq!(frame_bytes(&logs), vec![b"hello".to_vec()]);
+    }
+
+    #[test]
+    fn golden_timeout_mode_ignores_delimiters() {
+        // Newlines are not special in Timeout mode: one idle period, one frame.
+        let logs = run_script(vec![ScriptEvent::Bytes(b"OK\r\nOK\r\n".to_vec())], seg_timeout(), 1);
+        assert_eq!(frame_bytes(&logs), vec![b"OK\r\nOK\r\n".to_vec()]);
+    }
+
+    #[test]
+    fn timeout_mode_cuts_frame_when_read_returns_after_idle_gap() {
+        // Issue #9: at 115200 baud / 2560 B / 250 ms period the inter-frame
+        // gap (~28 ms) is shorter than the 50 ms read timeout, so read()
+        // returns the NEXT chunk directly without a TimedOut in between.
+        // The idle check must run before feed() or frames merge invisibly
+        // until the 64 KiB hard cap. 30 ms gap > 10 ms seg timeout here.
+        let logs = run_script(
+            vec![
+                ScriptEvent::Bytes(b"AAAA".to_vec()),
+                ScriptEvent::DelayedBytes { delay_ms: 30, bytes: b"BBBB".to_vec() },
+            ],
+            seg_timeout(),
+            2,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"AAAA".to_vec(), b"BBBB".to_vec()]);
+    }
+
+    #[test]
+    fn timeout_mode_merges_when_gap_stays_below_timeout() {
+        // Companion pin: chunks arriving back-to-back (no observable idle
+        // gap) must still merge — the fix may not turn continuous flow into
+        // per-chunk cuts.
+        let logs = run_script(
+            vec![
+                ScriptEvent::Bytes(b"AAAA".to_vec()),
+                ScriptEvent::Bytes(b"BBBB".to_vec()),
+            ],
+            seg_timeout(),
+            1,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"AAAABBBB".to_vec()]);
+    }
+
+    #[test]
+    fn golden_combined_any_newline_frames_on_arrival() {
+        let logs = run_script(
+            vec![ScriptEvent::Bytes(b"AT\r\nOK\r\n".to_vec())],
+            seg_combined(FrameDelimiter::AnyNewline),
+            2,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"AT\r\n".to_vec(), b"OK\r\n".to_vec()]);
+    }
+
+    #[test]
+    fn golden_combined_any_newline_crlf_split_across_reads_is_two_frames() {
+        // QUIRK pinned: "\r" ending a read matches immediately, so a CRLF pair
+        // split across read boundaries frames as "OK\r" and "\n" separately.
+        let logs = run_script(
+            vec![
+                ScriptEvent::Bytes(b"OK\r".to_vec()),
+                ScriptEvent::Bytes(b"\n".to_vec()),
+            ],
+            seg_combined(FrameDelimiter::AnyNewline),
+            2,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"OK\r".to_vec(), b"\n".to_vec()]);
+    }
+
+    #[test]
+    fn golden_combined_custom_delimiter_residue_flushes_on_timeout() {
+        let logs = run_script(
+            vec![ScriptEvent::Bytes(b"ab##cd##e".to_vec())],
+            seg_combined(FrameDelimiter::Custom(b"##".to_vec())),
+            3,
+        );
+        assert_eq!(
+            frame_bytes(&logs),
+            vec![b"ab##".to_vec(), b"cd##".to_vec(), b"e".to_vec()]
+        );
+    }
+
+    #[test]
+    fn golden_combined_empty_custom_delimiter_never_frames() {
+        let logs = run_script(
+            vec![ScriptEvent::Bytes(b"abc".to_vec())],
+            seg_combined(FrameDelimiter::Custom(vec![])),
+            1,
+        );
+        assert_eq!(frame_bytes(&logs), vec![b"abc".to_vec()]);
+    }
+
+    #[test]
+    fn golden_send_writes_port_and_interleaves_transcript() {
+        let port = ScriptedPort::new("SCRIPT", vec![ScriptEvent::Bytes(b"OK\r\n".to_vec())]);
+        let written = Arc::clone(&port.written);
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.set_frame_segmentation_config(seg_combined(FrameDelimiter::AnyNewline));
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        // Wait for the RX frame first so ordering is deterministic.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while manager.get_logs().len() < 1 && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        manager.send_data(b"AT\r\n".to_vec()).unwrap();
+        thread::sleep(Duration::from_millis(50));
+
+        let logs = manager.get_logs();
+        manager.disconnect().unwrap();
+
+        assert_eq!(*written.lock().unwrap(), b"AT\r\n".to_vec());
+        assert_eq!(
+            logs.iter().map(|l| l.direction).collect::<Vec<_>>(),
+            vec![Direction::Received, Direction::Sent]
+        );
+    }
+
+    #[test]
+    fn reader_death_marks_connection_lost_and_salvages_pending() {
+        // RFC #3 Step 3: a fatal read error must surface — the next status
+        // poll reports disconnected with the error, and the pending partial
+        // frame is flushed instead of vanishing.
+        let port = ScriptedPort::new(
+            "SCRIPT",
+            vec![ScriptEvent::Bytes(b"abc".to_vec()), ScriptEvent::Fail],
+        );
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.set_frame_segmentation_config(seg_timeout());
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        // Give the thread time to hit Fail and break.
+        thread::sleep(Duration::from_millis(200));
+
+        let status = manager.get_status();
+        assert!(!status.is_connected);
+        assert_eq!(status.connection_error.as_deref(), Some("scripted failure"));
+        // Pending "abc" salvaged as a final frame on death.
+        assert_eq!(frame_bytes(&manager.get_logs()), vec![b"abc".to_vec()]);
+
+        // A manual disconnect afterwards is a clean no-op.
+        assert!(manager.disconnect().unwrap().is_none());
+        assert!(manager.get_status().connection_error.is_some()); // sticky until next connect
+    }
+
+    #[test]
+    fn bus_events_carry_contiguous_seq_across_rx_and_tx() {
+        // RFC #3 Step 4 acceptance: frames reach subscribers with contiguous
+        // seqs, TX and RX sharing one sequence, no loss, no duplication.
+        let port = ScriptedPort::new("SCRIPT", vec![ScriptEvent::Bytes(b"hello".to_vec())]);
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.set_frame_segmentation_config(seg_timeout());
+        let sub = manager.bus().subscribe(crate::bus::GUI_DEFAULT);
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        thread::sleep(Duration::from_millis(150)); // RX arrives + idle flush
+        manager.send_data(b"ping".to_vec()).unwrap();
+
+        let mut seen: Vec<(u64, Direction)> = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline && seen.len() < 2 {
+            if let Some(batch) = sub.recv_batch() {
+                seen.extend(batch.frames.iter().map(|f| (f.seq, f.dir)));
+            }
+        }
+        manager.disconnect().unwrap();
+
+        assert_eq!(
+            seen,
+            vec![(1, Direction::Received), (2, Direction::Sent)]
+        );
+    }
+
+    #[test]
+    fn disconnect_returns_joinable_handle_and_reconnect_is_immediate() {        // RFC #3 Step 3: disconnect hands the reader handle to the caller;
+        // a bounded join then guarantees the device is free for reopen.
+        let port = ScriptedPort::new("SCRIPT", vec![]);
+        let mut manager = SerialManager::new()
+            .with_port_opener(Arc::new(ScriptedOpener { port }));
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+
+        let handle = manager.disconnect().unwrap().expect("reader handle");
+        SerialManager::join_reader_bounded(handle);
+
+        // Immediate reconnect must succeed (no stale reader, no EBUSY).
+        manager.connect("SCRIPT", SerialConfig::default()).unwrap();
+        assert!(manager.get_status().is_connected);
+        assert!(manager.get_status().connection_error.is_none());
+        manager.disconnect().unwrap();
+    }
+
+    #[test]
+    fn golden_continuous_stream_hard_capped_frames() {
+        // 150 KiB of back-to-back data with no idle gap: the hard cap must
+        // cut 64 KiB frames without waiting for a timeout, and the residue
+        // flushes once the stream goes quiet.
+        let script: Vec<ScriptEvent> = (0..150)
+            .map(|_| ScriptEvent::Bytes(vec![b'x'; 1024]))
+            .collect();
+        let logs = run_script(script, seg_timeout(), 3);
+        let sizes: Vec<usize> = logs.iter().map(|l| l.data.len()).collect();
+        assert_eq!(sizes, vec![65536, 65536, 22528]);
+    }
+}
