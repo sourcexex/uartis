@@ -1,13 +1,13 @@
-# RSerial Debug Assistant
+# Uartis
 
 <div align="center">
 
-<img src="./assets/RSerialDebugAssistant.png" width="30%" alt="RSerial Debug Assistant Logo">
+<img src="./assets/uartis-logo.png" width="30%" alt="Uartis logo">
 
 **A professional-grade, cross-platform serial debugging tool built with Tauri 2.0 + React 18**
 
-[![Release](https://img.shields.io/github/v/release/Gyanano/RSerialDebugAssistant)](https://github.com/Gyanano/RSerialDebugAssistant/releases/latest)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/sourcexex/uartis)](https://github.com/sourcexex/uartis/releases/latest)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/tauri-2.0-purple.svg)](https://tauri.app/)
 [![React](https://img.shields.io/badge/react-18.2-61dafb.svg)](https://reactjs.org/)
@@ -23,9 +23,11 @@
 
 ## 📖 About
 
-**RSerial Debug Assistant** is a professional-grade serial communication debugging tool designed for embedded systems engineers, IoT developers, and hardware enthusiasts. Combining the power of **Rust** with the elegance of modern **React** UI, it provides a seamless cross-platform experience for Windows, macOS, and Linux.
+**Uartis** is a professional-grade serial communication debugging tool designed for embedded systems engineers, IoT developers, and hardware enthusiasts. Combining the power of **Rust** with the elegance of modern **React** UI, it provides a seamless cross-platform experience for Windows, macOS, and Linux.
 
 Whether you're debugging Arduino projects, communicating with industrial sensors, testing embedded devices, or monitoring serial protocols, this tool delivers professional features with an intuitive interface.
+
+Uartis is maintained by [Sourcex](https://github.com/sourcexex); the codebase is Apache-2.0 licensed.
 
 ## ✨ Features
 
@@ -73,7 +75,7 @@ Whether you're debugging Arduino projects, communicating with industrial sensors
 
 ### Download Pre-built Binaries
 
-Download the [latest GitHub Release](https://github.com/Gyanano/RSerialDebugAssistant/releases/latest). The version number on that page is the source of truth; this README does not list releases by hand.
+Download the [latest GitHub Release](https://github.com/sourcexex/uartis/releases/latest). The version number on that page is the source of truth; this README does not list releases by hand.
 
 | Platform | Format | Notes |
 |----------|--------|-------|
@@ -94,8 +96,8 @@ Release builds run only when a version tag is pushed **and** that commit is on `
 
 ```bash
 # Clone the repository
-git clone https://github.com/Gyanano/RSerialDebugAssistant.git
-cd RSerialDebugAssistant
+git clone https://github.com/sourcexex/uartis.git
+cd uartis
 
 # Install frontend dependencies
 cd frontend
@@ -299,7 +301,7 @@ npm run build                       # Vite production build
 
 ## 🗺️ Roadmap
 
-We are actively working on new features to make RSerial Debug Assistant even more powerful:
+We are actively working on new features to make Uartis even more powerful:
 
 ### 📦 Data Parsing & Packaging (Planned)
 - **Protocol Parser** - Define custom data frame structures with header, payload, and checksum
@@ -317,7 +319,7 @@ We are actively working on new features to make RSerial Debug Assistant even mor
 - **Data Triggers & Alerts** - Set up notifications based on data patterns or thresholds
 - **Virtual Serial Port** - Create virtual COM port pairs for testing
 
-> Have a feature request? [Open an issue](https://github.com/Gyanano/RSerialDebugAssistant/issues) to let us know!
+> Have a feature request? [Open an issue](https://github.com/sourcexex/uartis/issues) to let us know!
 
 ## ❤️ Contributing
 
@@ -328,10 +330,10 @@ Contributions are welcome! Help us improve the project:
 ### Getting Started with Development
 
 1. **Fork** the repository on GitHub
-2. **Clone** your fork locally:
+2. **Clone** the repository locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/RSerialDebugAssistant.git
-   cd RSerialDebugAssistant
+   git clone https://github.com/sourcexex/uartis.git
+   cd uartis
    ```
 3. **Create** a feature branch:
    ```bash
@@ -377,7 +379,7 @@ Contributions are welcome! Help us improve the project:
 
 ### Reporting Issues
 
-Found a bug or have a feature request? Please [open an issue](https://github.com/Gyanano/RSerialDebugAssistant/issues) with:
+Found a bug or have a feature request? Please [open an issue](https://github.com/sourcexex/uartis/issues) with:
 
 **For Bugs:**
 - Clear, concise title
@@ -395,9 +397,9 @@ Found a bug or have a feature request? Please [open an issue](https://github.com
 
 ## 📄 License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Apache License 2.0** - see the [LICENSE](LICENSE) file for details.
 
-MIT License grants you freedom to use, modify, and distribute this software with proper attribution.
+Apache-2.0 grants you the freedom to use, modify, and distribute this software, provided the copyright and attribution notices are preserved.
 
 ## 🙏 Acknowledgments
 
@@ -417,7 +419,7 @@ This project stands on the shoulders of amazing open-source projects:
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Gyanano/RSerialDebugAssistant&type=Date)](https://star-history.com/#Gyanano/RSerialDebugAssistant&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=sourcexex/uartis&type=Date)](https://star-history.com/#sourcexex/uartis&Date)
 
 </div>
 
@@ -425,5 +427,5 @@ This project stands on the shoulders of amazing open-source projects:
 
 ⭐ **If you find this project helpful, please consider giving it a star on GitHub!**
 
-Version history lives on [GitHub Releases](https://github.com/Gyanano/RSerialDebugAssistant/releases). Each tagged build also gets notes generated from commits since the previous tag.
+Version history lives on [GitHub Releases](https://github.com/sourcexex/uartis/releases). Each tagged build also gets notes generated from commits since the previous tag.
 

@@ -1,4 +1,4 @@
-# 为 RSerial Debug Assistant 做贡献
+# 为 Uartis 做贡献
 
 [English](CONTRIBUTING.md)
 
@@ -80,7 +80,7 @@ ci(macos): sign and notarize the GitHub dmg
 - `src-tauri/tauri.conf.json`
 - `frontend/package.json`
 
-**不要**在 README 中手写版本号或更新日志——版本发布和变更说明由 CI 生成，发布在 [GitHub Releases](https://github.com/Gyanano/RSerialDebugAssistant/releases) 上。
+**不要**在 README 中手写版本号或更新日志——版本发布和变更说明由 CI 生成，发布在 [GitHub Releases](https://github.com/sourcexex/uartis/releases) 上。
 
 ## 发版流程（维护者）
 
@@ -118,4 +118,4 @@ npx @tauri-apps/cli@2 dev
 
 ## 报告问题
 
-请[提交 Issue](https://github.com/Gyanano/RSerialDebugAssistant/issues)，附上清晰的标题、复现步骤、期望与实际行为，以及你的操作系统和应用版本。
+请[提交 Issue](https://github.com/sourcexex/uartis/issues)，附上清晰的标题、复现步骤、期望与实际行为，以及你的操作系统和应用版本。

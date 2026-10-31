@@ -1,10 +1,10 @@
 [package]
-name = "serial-debug-assistant"
+name = "uartis"
 version = "1.4.2"
-description = "Cross-platform serial debugging assistant"
-authors = ["Gyanano"]
-license = "MIT"
-repository = "https://github.com/Gyanano/RSerialDebugAssistant"
+description = "Uartis - cross-platform serial debugging tool"
+authors = ["Sourcex"]
+license = "Apache-2.0"
+repository = "https://github.com/sourcexex/uartis"
 edition = "2021"
 
 [build-dependencies]

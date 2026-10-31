@@ -18,12 +18,12 @@ import { toast } from 'sonner';
 import { Button } from './components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
 
-const QUICK_COMMANDS_STORAGE_KEY = 'serial-debug-quick-commands';
-const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
-const STORAGE_KEY_SIDEBAR_WIDTH = 'serialDebug_sidebarWidth';
-const STORAGE_KEY_SIDEBAR_COLLAPSED = 'serialDebug_sidebarCollapsed';
-const STORAGE_KEY_LOG_VIEWER_HEIGHT = 'serialDebug_logViewerHeight';
-const STORAGE_KEY_FRAME_SEGMENTATION = 'serialDebug_frameSegmentation';
+const QUICK_COMMANDS_STORAGE_KEY = 'uartis-quick-commands';
+const STORAGE_KEY_TEXT_ENCODING = 'uartis_textEncoding';
+const STORAGE_KEY_SIDEBAR_WIDTH = 'uartis_sidebarWidth';
+const STORAGE_KEY_SIDEBAR_COLLAPSED = 'uartis_sidebarCollapsed';
+const STORAGE_KEY_LOG_VIEWER_HEIGHT = 'uartis_logViewerHeight';
+const STORAGE_KEY_FRAME_SEGMENTATION = 'uartis_frameSegmentation';
 const INITIAL_COMMANDS = 20;
 
 // Layout constants
@@ -138,8 +138,8 @@ function App() {
   });
   const [polledLogs, setPolledLogs] = useState<LogEntry[]>([]);
   // RFC #3 Step 4: event push is the default log path; set
-  // localStorage 'serialEventPush' = '0' to roll back to 100ms polling.
-  const [eventPush] = useState(() => localStorage.getItem('serialEventPush') !== '0');
+  // localStorage 'uartisEventPush' = '0' to roll back to 100ms polling.
+  const [eventPush] = useState(() => localStorage.getItem('uartisEventPush') !== '0');
   const { logs: pushedLogs, clearLogs: clearPushedLogs } = useSerialLogs(eventPush);
   const logs = eventPush ? pushedLogs : polledLogs;
   const [sendText, setSendText] = useState('');
@@ -382,7 +382,7 @@ function App() {
 
     // Initialize log limit from localStorage
     const initLogLimit = async () => {
-      const savedMaxLogLines = localStorage.getItem('serialDebug_maxLogLines');
+      const savedMaxLogLines = localStorage.getItem('uartis_maxLogLines');
       if (savedMaxLogLines) {
         try {
           await invoke('set_log_limit', { limit: parseInt(savedMaxLogLines, 10) });

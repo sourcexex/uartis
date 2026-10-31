@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "RSerial Debug Assistant",
-    "subtitle": "Professional Tool",
+    "title": "Uartis",
+    "subtitle": "Serial Debug Assistant",
     "connectionLost": "Connection lost: {error}"
   },
   "sidebar": {
@@ -160,6 +160,9 @@
     "delimiterEmpty": "Delimiter cannot be empty",
     "about": "About",
     "version": "Version",
+    "maintainedBy": "Maintained by Sourcex",
+    "github": "GitHub",
+    "copyright": "© 2026 Sourcex",
     "checkForUpdates": "Check for Updates",
     "checking": "Checking...",
     "updateAvailable": "Update Available",

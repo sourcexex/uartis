@@ -70,7 +70,7 @@ git push origin V1.4.0
 
 Pushing the tag is what starts the workflow. The gate job (`scripts/ci-release-gate.sh`) then re-checks the three conditions. The production branch it verifies defaults to `main` and can be overridden with the `RELEASE_GATE_PROD_BRANCH` environment variable. If any check fails, Windows/macOS builds are skipped.
 
-Do not add version lines to `README.md` / `README.zh-CN.md`. Those files link to [Releases](https://github.com/Gyanano/RSerialDebugAssistant/releases); CI fills the GitHub Release body from commits since the previous tag.
+Do not add version lines to `README.md` / `README.zh-CN.md`. Those files link to [Releases](https://github.com/sourcexex/uartis/releases); CI fills the GitHub Release body from commits since the previous tag.
 
 Artifacts:
 

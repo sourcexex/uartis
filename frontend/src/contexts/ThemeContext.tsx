@@ -114,7 +114,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
   // Load saved theme from localStorage on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem('serialDebug_theme') as ThemeMode | null;
+    const savedTheme = localStorage.getItem('uartis_theme') as ThemeMode | null;
     if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
       setThemeModeState(savedTheme);
     }
@@ -127,7 +127,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
   const setThemeMode = (mode: ThemeMode) => {
     setThemeModeState(mode);
-    localStorage.setItem('serialDebug_theme', mode);
+    localStorage.setItem('uartis_theme', mode);
   };
 
   const colors = themeMode === 'light' ? lightTheme : darkTheme;

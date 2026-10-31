@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { TextEncoding } from '../types';
 
-const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
+const STORAGE_KEY_TEXT_ENCODING = 'uartis_textEncoding';
 
 /**
  * Get the current text encoding setting from localStorage

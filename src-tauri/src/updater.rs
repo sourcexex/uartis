@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
-const GITHUB_API_URL: &str = "https://api.github.com/repos/Gyanano/RSerialDebugAssistant/releases/latest";
-const USER_AGENT: &str = "RSerialDebugAssistant";
+const GITHUB_API_URL: &str = "https://api.github.com/repos/sourcexex/uartis/releases/latest";
+const USER_AGENT: &str = "Uartis";
 
 /// GitHub Release asset
 #[derive(Debug, Deserialize)]
@@ -364,7 +364,7 @@ fn render_trampoline_script(
 ) -> String {
     format!(
         r#"#!/bin/sh
-# RSerial Debug Assistant in-place update trampoline (auto-generated).
+# Uartis in-place update trampoline (auto-generated).
 # Waits for the running app to exit, swaps the .app bundle, relaunches.
 PID={pid}
 MOUNT={mount}
@@ -381,8 +381,8 @@ while kill -0 "$PID" 2>/dev/null && [ "$i" -lt 150 ]; do
 done
 
 PARENT=$(dirname "$TARGET")
-NEW_TMP="$PARENT/.rsda-update-new.app"
-OLD_TMP="$PARENT/.rsda-update-old.app"
+NEW_TMP="$PARENT/.uartis-update-new.app"
+OLD_TMP="$PARENT/.uartis-update-old.app"
 
 fallback() {{
     rm -rf "$NEW_TMP"
@@ -469,7 +469,7 @@ fn prepare_inplace_script(dmg_path: &std::path::Path) -> Result<PathBuf, String>
     };
 
     let script = render_trampoline_script(std::process::id(), &mount, &app_in_dmg, &bundle, dmg_path);
-    let script_path = std::env::temp_dir().join(format!("rsda-update-{}.sh", std::process::id()));
+    let script_path = std::env::temp_dir().join(format!("uartis-update-{}.sh", std::process::id()));
     std::fs::write(&script_path, script).map_err(|e| format!("Cannot write trampoline: {}", e))?;
     Ok(script_path)
 }
@@ -531,16 +531,16 @@ mod tests {
 
     #[test]
     fn bundle_path_extracted_from_nested_exe() {
-        let exe = std::path::Path::new("/Applications/RSerial Debug Assistant.app/Contents/MacOS/serial-debug-assistant");
+        let exe = std::path::Path::new("/Applications/Uartis.app/Contents/MacOS/uartis");
         assert_eq!(
             bundle_path_from_exe(exe),
-            Some(PathBuf::from("/Applications/RSerial Debug Assistant.app"))
+            Some(PathBuf::from("/Applications/Uartis.app"))
         );
     }
 
     #[test]
     fn bundle_path_none_outside_bundle() {
-        let exe = std::path::Path::new("/Users/x/project/target/debug/serial-debug-assistant");
+        let exe = std::path::Path::new("/Users/x/project/target/debug/uartis");
         assert_eq!(bundle_path_from_exe(exe), None);
     }
 
@@ -548,10 +548,10 @@ mod tests {
     fn hdiutil_mount_point_parsed_with_spaces() {
         let out = "/dev/disk6              GUID_partition_scheme\n\
                    /dev/disk6s1            EFI\n\
-                   /dev/disk6s2            Apple_HFS   /Volumes/RSerial Debug Assistant 1.4.1\n";
+                   /dev/disk6s2            Apple_HFS   /Volumes/Uartis 1.4.2\n";
         assert_eq!(
             parse_hdiutil_mount_point(out),
-            Some("/Volumes/RSerial Debug Assistant 1.4.1".to_string())
+            Some("/Volumes/Uartis 1.4.2".to_string())
         );
     }
 
@@ -571,16 +571,16 @@ mod tests {
     fn trampoline_script_swaps_and_relaunches() {
         let script = render_trampoline_script(
             4242,
-            "/Volumes/RSDA 1.4.1",
-            std::path::Path::new("/Volumes/RSDA 1.4.1/RSerial Debug Assistant.app"),
-            std::path::Path::new("/Applications/RSerial Debug Assistant.app"),
-            std::path::Path::new("/tmp/rsda.dmg"),
+            "/Volumes/Uartis 1.4.2",
+            std::path::Path::new("/Volumes/Uartis 1.4.2/Uartis.app"),
+            std::path::Path::new("/Applications/Uartis.app"),
+            std::path::Path::new("/tmp/uartis.dmg"),
         );
         // Waits for our pid, stages via ditto, swaps, rolls back on failure,
         // detaches, relaunches the target — and quotes every path.
         assert!(script.contains("PID=4242"));
         assert!(script.contains("kill -0 \"$PID\""));
-        assert!(script.contains("MOUNT='/Volumes/RSDA 1.4.1'"));
+        assert!(script.contains("MOUNT='/Volumes/Uartis 1.4.2'"));
         assert!(script.contains("ditto \"$APP_IN_DMG\" \"$NEW_TMP\""));
         assert!(script.contains("mv \"$TARGET\" \"$OLD_TMP\""));
         assert!(script.contains("mv \"$OLD_TMP\" \"$TARGET\""));

@@ -1,4 +1,4 @@
-# RSerial Debug Assistant
+# Uartis
 
 Tauri 2 + React 18 串口调试工具。前端在 `frontend/`，Rust 在 `src-tauri/`。UI 用 shadcn（new-york / zinc），组件在 `frontend/src/components/ui/`。
 

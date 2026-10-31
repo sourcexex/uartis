@@ -19,7 +19,7 @@ interface LanguageContextType {
   t: (key: string) => string;
 }
 
-const STORAGE_KEY = 'serialDebug_language';
+const STORAGE_KEY = 'uartis_language';
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 

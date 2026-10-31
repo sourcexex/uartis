@@ -106,8 +106,8 @@ impl SerialManager {
     pub fn new() -> Self {
         // Default log directory - will be overridden by frontend settings
         let default_log_dir = dirs::document_dir()
-            .map(|p| p.join("SerialLogs"))
-            .unwrap_or_else(|| PathBuf::from("./SerialLogs"))
+            .map(|p| p.join("UartisLogs"))
+            .unwrap_or_else(|| PathBuf::from("./UartisLogs"))
             .to_string_lossy()
             .to_string();
 
@@ -609,7 +609,7 @@ impl SerialManager {
         match format {
             ExportFormat::Txt => {
                 let now_with_tz = Utc::now().with_timezone(&tz_offset);
-                writeln!(file, "RSerial Debug Assistant - Log Export")?;
+                writeln!(file, "Uartis - Log Export")?;
                 writeln!(file, "Generated: {}", now_with_tz.format("%Y-%m-%d %H:%M:%S %z"))?;
                 writeln!(file, "{}", "=".repeat(60))?;
                 writeln!(file)?;
@@ -747,7 +747,7 @@ impl SerialManager {
         self.log_directory
             .lock()
             .map(|guard| guard.clone())
-            .unwrap_or_else(|_| String::from("./SerialLogs"))
+            .unwrap_or_else(|_| String::from("./UartisLogs"))
     }
 
     /// Set the timezone offset in minutes for recording timestamps

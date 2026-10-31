@@ -15,14 +15,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-const STORAGE_KEY_RECEIVE_FORMAT = 'serialDebug_receiveFormat';
-const STORAGE_KEY_SHOW_TIMESTAMPS = 'serialDebug_showTimestamps';
-const STORAGE_KEY_TEXT_ENCODING = 'serialDebug_textEncoding';
-const STORAGE_KEY_SPECIAL_CHAR_CONFIG = 'serialDebug_specialCharConfig';
-const STORAGE_KEY_SAVE_TEXT_ENABLED = 'serialDebug_saveTextEnabled';
-const STORAGE_KEY_SAVE_RAW_ENABLED = 'serialDebug_saveRawEnabled';
-const STORAGE_KEY_LOG_PATH = 'serialDebug_logPath';
-const STORAGE_KEY_SHOW_LINE_NUMBERS = 'serialDebug_showLineNumbers';
+const STORAGE_KEY_RECEIVE_FORMAT = 'uartis_receiveFormat';
+const STORAGE_KEY_SHOW_TIMESTAMPS = 'uartis_showTimestamps';
+const STORAGE_KEY_TEXT_ENCODING = 'uartis_textEncoding';
+const STORAGE_KEY_SPECIAL_CHAR_CONFIG = 'uartis_specialCharConfig';
+const STORAGE_KEY_SAVE_TEXT_ENABLED = 'uartis_saveTextEnabled';
+const STORAGE_KEY_SAVE_RAW_ENABLED = 'uartis_saveRawEnabled';
+const STORAGE_KEY_LOG_PATH = 'uartis_logPath';
+const STORAGE_KEY_SHOW_LINE_NUMBERS = 'uartis_showLineNumbers';
 
 const SCROLL_BOTTOM_THRESHOLD = 50;
 

@@ -1,6 +1,6 @@
 import { TimezoneOption } from '../types';
 
-const STORAGE_KEY = 'serialDebug_timezone';
+const STORAGE_KEY = 'uartis_timezone';
 
 // List of timezone options (UTC offsets from -12 to +14)
 export const TIMEZONE_OPTIONS: { value: TimezoneOption; label: string; labelZh: string }[] = [

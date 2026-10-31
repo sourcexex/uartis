@@ -73,7 +73,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
   const { themeMode, setThemeMode, colors } = useTheme();
   const { language, setLanguage, t } = useLanguage();
   const [timezone, setTimezoneState] = useState<TimezoneOption>(loadTimezone);
-  const [logPath, setLogPath] = useState('~/Documents/SerialLogs');
+  const [logPath, setLogPath] = useState('~/Documents/UartisLogs');
   const [maxLogLines, setMaxLogLines] = useState(1000);
   const [textEncoding, setTextEncoding] = useState<TextEncoding>('utf-8');
   const [specialCharConfig, setSpecialCharConfig] = useState<SpecialCharConfig>(DEFAULT_SPECIAL_CHAR_CONFIG);
@@ -122,11 +122,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
   // Load saved settings from localStorage on component mount
   useEffect(() => {
-    const savedLogPath = localStorage.getItem('serialDebug_logPath');
-    const savedMaxLogLines = localStorage.getItem('serialDebug_maxLogLines');
-    const savedTextEncoding = localStorage.getItem('serialDebug_textEncoding');
-    const savedSpecialCharConfig = localStorage.getItem('serialDebug_specialCharConfig');
-    const savedFrameSegmentationConfig = localStorage.getItem('serialDebug_frameSegmentation');
+    const savedLogPath = localStorage.getItem('uartis_logPath');
+    const savedMaxLogLines = localStorage.getItem('uartis_maxLogLines');
+    const savedTextEncoding = localStorage.getItem('uartis_textEncoding');
+    const savedSpecialCharConfig = localStorage.getItem('uartis_specialCharConfig');
+    const savedFrameSegmentationConfig = localStorage.getItem('uartis_frameSegmentation');
 
     if (savedLogPath) {
       setLogPath(savedLogPath);
@@ -162,14 +162,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
   // Save log path to localStorage whenever it changes
   const handleLogPathChange = (path: string) => {
     setLogPath(path);
-    localStorage.setItem('serialDebug_logPath', path);
+    localStorage.setItem('uartis_logPath', path);
   };
 
   // Save max log lines to localStorage and sync with backend
   const handleMaxLogLinesChange = async (value: number) => {
     const clampedValue = Math.min(10000, Math.max(100, value));
     setMaxLogLines(clampedValue);
-    localStorage.setItem('serialDebug_maxLogLines', clampedValue.toString());
+    localStorage.setItem('uartis_maxLogLines', clampedValue.toString());
     try {
       await invoke('set_log_limit', { limit: clampedValue });
     } catch (error) {
@@ -180,14 +180,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
   // Save text encoding to localStorage
   const handleTextEncodingChange = (encoding: TextEncoding) => {
     setTextEncoding(encoding);
-    localStorage.setItem('serialDebug_textEncoding', encoding);
+    localStorage.setItem('uartis_textEncoding', encoding);
   };
 
   // Save special character config to localStorage
   const handleSpecialCharConfigChange = (updates: Partial<SpecialCharConfig>) => {
     const newConfig = { ...specialCharConfig, ...updates };
     setSpecialCharConfig(newConfig);
-    localStorage.setItem('serialDebug_specialCharConfig', JSON.stringify(newConfig));
+    localStorage.setItem('uartis_specialCharConfig', JSON.stringify(newConfig));
   };
 
   // Handle timezone change
@@ -210,7 +210,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
   const handleFrameSegmentationChange = async (updates: Partial<FrameSegmentationConfig>) => {
     const newConfig = { ...frameSegmentationConfig, ...updates };
     setFrameSegmentationConfig(newConfig);
-    localStorage.setItem('serialDebug_frameSegmentation', JSON.stringify(newConfig));
+    localStorage.setItem('uartis_frameSegmentation', JSON.stringify(newConfig));
     try {
       await invoke('set_frame_segmentation', { config: newConfig });
     } catch (error) {
@@ -324,6 +324,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
       await invoke('open_url', { url: updateInfo.release_url });
     } catch (error) {
       console.error('Failed to open release notes:', error);
+    }
+  };
+
+  const handleOpenGitHub = async () => {
+    try {
+      await invoke('open_url', { url: 'https://github.com/sourcexex/uartis' });
+    } catch (error) {
+      console.error('Failed to open GitHub:', error);
     }
   };
 
@@ -695,6 +703,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                   <div>
                     <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>{t('app.title')}</div>
                     <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} {__APP_VERSION__} (Build {__APP_BUILD__})</div>
+                    <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.maintainedBy')}</div>
                   </div>
                   <Button
                     variant="secondary"
@@ -813,6 +822,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                     </span>
                   </div>
                 )}
+
+                {/* Project links */}
+                <div className="px-4 py-2.5 border-t flex items-center justify-between" style={{ borderColor: colors.borderLight }}>
+                  <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.copyright')}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleOpenGitHub}
+                    className="h-7 px-2 text-xs flex items-center gap-1"
+                    style={{ color: colors.textSecondary }}
+                  >
+                    <ExternalLink size={12} />
+                    <span>{t('settings.github')}</span>
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>

@@ -1,7 +1,7 @@
 {
   "app": {
-    "title": "RSerial Debug Assistant",
-    "subtitle": "Professional Tool",
+    "title": "Uartis",
+    "subtitle": "串口调试助手",
     "connectionLost": "连接意外断开：{error}"
   },
   "sidebar": {
@@ -160,6 +160,9 @@
     "delimiterEmpty": "分隔符不能为空",
     "about": "关于",
     "version": "版本",
+    "maintainedBy": "由 Sourcex 维护",
+    "github": "GitHub",
+    "copyright": "© 2026 Sourcex",
     "checkForUpdates": "检查更新",
     "checking": "正在检查...",
     "updateAvailable": "发现新版本",

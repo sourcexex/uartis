@@ -100,7 +100,7 @@ jobs:
         with:
           projectPath: .
           tagName: ${{ github.ref_name }}
-          releaseName: RSerial Debug Assistant ${{ needs.gate.outputs.version }}
+          releaseName: Uartis ${{ needs.gate.outputs.version }}
           releaseBody: |
             ${{ github.ref_name }}
 

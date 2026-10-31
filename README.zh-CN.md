@@ -1,13 +1,13 @@
-# RSerial 调试助手
+# Uartis
 
 <div align="center">
 
-<img src="./assets/RSerialDebugAssistant.png" width="30%" alt="RSerial 调试助手 Logo">
+<img src="./assets/uartis-logo.png" width="30%" alt="Uartis logo">
 
 **一个专业级、跨平台的串行调试工具，基于 Tauri 2.0 + React 18 构建**
 
-[![Release](https://img.shields.io/github/v/release/Gyanano/RSerialDebugAssistant)](https://github.com/Gyanano/RSerialDebugAssistant/releases/latest)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/sourcexex/uartis)](https://github.com/sourcexex/uartis/releases/latest)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/tauri-2.0-purple.svg)](https://tauri.app/)
 [![React](https://img.shields.io/badge/react-18.2-61dafb.svg)](https://reactjs.org/)
@@ -23,9 +23,11 @@
 
 ## 📖 项目介绍
 
-**RSerial 调试助手**是一个专业级的串行通信调试工具，专为嵌入式系统工程师、IoT 开发者和硬件爱好者设计。它结合了 **Rust** 的强大性能和现代 **React** UI 的优雅设计，在 Windows、macOS 和 Linux 上提供无缝的跨平台体验。
+**Uartis** 是一个专业级的串行通信调试工具，专为嵌入式系统工程师、IoT 开发者和硬件爱好者设计。它结合了 **Rust** 的强大性能和现代 **React** UI 的优雅设计，在 Windows、macOS 和 Linux 上提供无缝的跨平台体验。
 
 无论您是调试 Arduino 项目、与工业传感器通讯、测试嵌入式设备，还是监控串行协议，本工具都能以直观的界面提供专业级的功能支持。
+
+Uartis 由 [Sourcex](https://github.com/sourcexex) 维护，代码库以 Apache-2.0 许可发布。
 
 ## ✨ 功能特性
 
@@ -73,7 +75,7 @@
 
 ### 下载预编译二进制文件
 
-到 [最新 GitHub Release](https://github.com/Gyanano/RSerialDebugAssistant/releases/latest) 下载。版本号以该页面为准，不必在 README 里手写。
+到 [最新 GitHub Release](https://github.com/sourcexex/uartis/releases/latest) 下载。版本号以该页面为准，不必在 README 里手写。
 
 | 平台 | 格式 | 说明 |
 |------|------|------|
@@ -94,8 +96,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/Gyanano/RSerialDebugAssistant.git
-cd RSerialDebugAssistant
+git clone https://github.com/sourcexex/uartis.git
+cd uartis
 
 # 安装前端依赖
 cd frontend
@@ -299,7 +301,7 @@ npm run build                       # Vite 生产构建
 
 ## 🗺️ 开发路线图
 
-我们正在积极开发新功能，让 RSerial 调试助手更加强大：
+我们正在积极开发新功能，让 Uartis 更加强大：
 
 ### 📦 数据解析与打包（规划中）
 - **协议解析器** - 定义自定义数据帧结构，包含帧头、负载和校验和
@@ -317,7 +319,7 @@ npm run build                       # Vite 生产构建
 - **数据触发器与告警** - 基于数据模式或阈值设置通知
 - **虚拟串口** - 创建虚拟 COM 端口对用于测试
 
-> 有功能建议？[提交 Issue](https://github.com/Gyanano/RSerialDebugAssistant/issues) 告诉我们！
+> 有功能建议？[提交 Issue](https://github.com/sourcexex/uartis/issues) 告诉我们！
 
 ## ❤️ 贡献
 
@@ -328,10 +330,10 @@ npm run build                       # Vite 生产构建
 ### 开发入门
 
 1. **Fork** GitHub 上的仓库
-2. **克隆**你的 fork 到本地：
+2. **克隆**仓库到本地：
    ```bash
-   git clone https://github.com/YOUR_USERNAME/RSerialDebugAssistant.git
-   cd RSerialDebugAssistant
+   git clone https://github.com/sourcexex/uartis.git
+   cd uartis
    ```
 3. **创建**特性分支：
    ```bash
@@ -377,7 +379,7 @@ npm run build                       # Vite 生产构建
 
 ### 报告问题
 
-发现 bug 或有功能请求？请 [打开 issue](https://github.com/Gyanano/RSerialDebugAssistant/issues)，包含：
+发现 bug 或有功能请求？请 [打开 issue](https://github.com/sourcexex/uartis/issues)，包含：
 
 **对于 Bug：**
 - 清晰、简洁的标题
@@ -395,9 +397,9 @@ npm run build                       # Vite 生产构建
 
 ## 📄 许可证
 
-本项目采用 **MIT 许可证** - 详见 [LICENSE](LICENSE) 文件。
+本项目采用 **Apache License 2.0** 许可证 - 详见 [LICENSE](LICENSE) 文件。
 
-MIT 许可证允许你在适当署名的情况下自由使用、修改和分发本软件。
+Apache-2.0 允许你在保留版权与署名声明的前提下自由使用、修改和分发本软件。
 
 ## 🙏 致谢
 
@@ -417,7 +419,7 @@ MIT 许可证允许你在适当署名的情况下自由使用、修改和分发�
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Gyanano/RSerialDebugAssistant&type=Date)](https://star-history.com/#Gyanano/RSerialDebugAssistant&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=sourcexex/uartis&type=Date)](https://star-history.com/#sourcexex/uartis&Date)
 
 </div>
 
@@ -425,5 +427,5 @@ MIT 许可证允许你在适当署名的情况下自由使用、修改和分发�
 
 ⭐ **如果你觉得本项目有帮助，请考虑在 GitHub 上给个 Star！**
 
-版本历史见 [GitHub Releases](https://github.com/Gyanano/RSerialDebugAssistant/releases)。每次打 Tag 发版时，CI 会根据相对上一版本的提交自动生成说明。
+版本历史见 [GitHub Releases](https://github.com/sourcexex/uartis/releases)。每次打 Tag 发版时，CI 会根据相对上一版本的提交自动生成说明。
 
