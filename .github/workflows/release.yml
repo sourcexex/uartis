@@ -4,6 +4,7 @@ name: Release
 #   1. the tagged commit is on `main` (the production branch)
 #   2. version.json changed vs the previous version tag
 #   3. the tag is Vx.y.z / vx.y.z and matches version.json
+# Only when the gate sets should_build=true do the build jobs run.
 on:
   push:
     tags:
@@ -17,12 +18,16 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   gate:
     name: Release gate
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.check.outputs.version }}
+      should_build: ${{ steps.check.outputs.should_build }}
     steps:
       - name: Checkout tagged commit
         uses: actions/checkout@v4
@@ -37,6 +42,7 @@ jobs:
   build:
     name: Build ${{ matrix.name }}
     needs: gate
+    if: needs.gate.outputs.should_build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -45,12 +51,14 @@ jobs:
             platform: windows-latest
             args: --bundles nsis
             rust_targets: x86_64-pc-windows-msvc
+            sums: windows
           - name: macOS
             platform: macos-latest
             args: --target aarch64-apple-darwin --bundles dmg
             rust_targets: aarch64-apple-darwin
+            sums: macos
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - name: Checkout tagged commit
         uses: actions/checkout@v4
@@ -58,11 +66,23 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
+
+      # Build the real frontend before Rust tests: the tauri::generate_context!
+      # macro needs frontendDist to exist, and this also validates the bundle.
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npm run typecheck
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -73,6 +93,11 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      # Shipping an untested tag is what the gate exists to prevent.
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --locked
 
       - name: Write App Store Connect API key
         if: matrix.platform == 'macos-latest'
@@ -106,13 +131,73 @@ jobs:
 
             - Windows: `.exe` (NSIS installer, unsigned)
             - macOS (Apple Silicon): signed and notarized `.dmg`
+
+            SHA256 checksums are attached as `SHA256SUMS.txt`.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
 
+      # Each platform hashes its own installer; the checksums job merges the
+      # per-platform files into the single SHA256SUMS.txt attached to the release.
+      - name: Generate SHA256SUMS (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $Bundle = "src-tauri/target/release/bundle/nsis"
+          $Files = Get-ChildItem -Path $Bundle -Filter *.exe -File
+          if (-not $Files) { throw "No NSIS installer found in $Bundle" }
+          $Lines = foreach ($File in $Files) {
+            $Hash = (Get-FileHash $File.FullName -Algorithm SHA256).Hash.ToLower()
+            "$Hash  $($File.Name)"
+          }
+          $Lines | Set-Content -Path "SHA256SUMS-${{ matrix.sums }}.txt" -Encoding ascii
+          Get-Content "SHA256SUMS-${{ matrix.sums }}.txt"
+
+      - name: Generate SHA256SUMS (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          set -euo pipefail
+          Bundle="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg"
+          ls "$Bundle"/*.dmg >/dev/null
+          (cd "$Bundle" && shasum -a 256 *.dmg) > "SHA256SUMS-${{ matrix.sums }}.txt"
+          cat "SHA256SUMS-${{ matrix.sums }}.txt"
+
+      - name: Upload checksum file
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" "SHA256SUMS-${{ matrix.sums }}.txt" --clobber
+
+  checksums:
+    name: Merge SHA256SUMS
+    needs: [gate, build]
+    if: needs.gate.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Merge per-platform checksum files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p sums
+          gh release download "$TAG" --repo "$REPO" --pattern 'SHA256SUMS-*.txt' --dir sums --clobber
+          cat sums/SHA256SUMS-*.txt | sort -k2 > SHA256SUMS.txt
+          echo "--- SHA256SUMS.txt ---"
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --repo "$REPO" --clobber
+          for f in sums/SHA256SUMS-*.txt; do
+            gh release delete-asset "$TAG" "$(basename "$f")" --repo "$REPO"
+          done
+
   release-notes:
     name: Fill release notes
-    needs: [gate, build]
+    needs: [gate, build, checksums]
+    if: needs.gate.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -125,5 +210,5 @@ jobs:
         run: |
           set -euo pipefail
           NOTES="$(gh api "repos/${REPO}/releases/generate-notes" -f tag_name="${TAG}" --jq .body)"
-          BODY="$(printf '%s\n\n%s\n' "${TAG}" "${NOTES}")"
+          BODY="$(printf '%s\n\n%s\n\n---\n\nSHA256 checksums: see SHA256SUMS.txt on this release.\n' "${TAG}" "${NOTES}")"
           gh release edit "${TAG}" --repo "${REPO}" --notes "${BODY}"

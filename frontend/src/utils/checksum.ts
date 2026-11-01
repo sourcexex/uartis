@@ -8,7 +8,7 @@ export function calculateXOR(data: Uint8Array): number[] {
   for (let i = 0; i < data.length; i++) {
     result ^= data[i];
   }
-  return [result & 0xFF];
+  return [result & 0xff];
 }
 
 /**
@@ -19,7 +19,7 @@ export function calculateADD8(data: Uint8Array): number[] {
   for (let i = 0; i < data.length; i++) {
     sum += data[i];
   }
-  return [sum & 0xFF];
+  return [sum & 0xff];
 }
 
 /**
@@ -33,9 +33,9 @@ export function calculateCRC8(data: Uint8Array): number[] {
     crc ^= data[i];
     for (let j = 0; j < 8; j++) {
       if (crc & 0x80) {
-        crc = ((crc << 1) ^ polynomial) & 0xFF;
+        crc = ((crc << 1) ^ polynomial) & 0xff;
       } else {
-        crc = (crc << 1) & 0xFF;
+        crc = (crc << 1) & 0xff;
       }
     }
   }
@@ -48,21 +48,21 @@ export function calculateCRC8(data: Uint8Array): number[] {
  * Returns 2 bytes in little-endian order (low byte first)
  */
 export function calculateCRC16(data: Uint8Array): number[] {
-  let crc = 0xFFFF;
+  let crc = 0xffff;
 
   for (let i = 0; i < data.length; i++) {
     crc ^= data[i];
     for (let j = 0; j < 8; j++) {
       if (crc & 0x0001) {
-        crc = ((crc >> 1) ^ 0xA001) & 0xFFFF; // Reflected polynomial
+        crc = ((crc >> 1) ^ 0xa001) & 0xffff; // Reflected polynomial
       } else {
-        crc = (crc >> 1) & 0xFFFF;
+        crc = (crc >> 1) & 0xffff;
       }
     }
   }
 
   // Return low byte first, then high byte (little-endian)
-  return [crc & 0xFF, (crc >> 8) & 0xFF];
+  return [crc & 0xff, (crc >> 8) & 0xff];
 }
 
 /**
@@ -71,21 +71,51 @@ export function calculateCRC16(data: Uint8Array): number[] {
  */
 export function calculateCCITTCRC16(data: Uint8Array): number[] {
   const polynomial = 0x1021;
-  let crc = 0xFFFF;
+  let crc = 0xffff;
 
   for (let i = 0; i < data.length; i++) {
-    crc ^= (data[i] << 8);
+    crc ^= data[i] << 8;
     for (let j = 0; j < 8; j++) {
       if (crc & 0x8000) {
-        crc = ((crc << 1) ^ polynomial) & 0xFFFF;
+        crc = ((crc << 1) ^ polynomial) & 0xffff;
       } else {
-        crc = (crc << 1) & 0xFFFF;
+        crc = (crc << 1) & 0xffff;
       }
     }
   }
 
   // Return high byte first, then low byte (big-endian)
-  return [(crc >> 8) & 0xFF, crc & 0xFF];
+  return [(crc >> 8) & 0xff, crc & 0xff];
+}
+
+/**
+ * Calculate CRC32 checksum (CRC-32/ISO-HDLC, reflected polynomial 0xEDB88320,
+ * init 0xFFFFFFFF, final XOR 0xFFFFFFFF). Returns 4 bytes big-endian.
+ */
+export function calculateCRC32(data: Uint8Array): number[] {
+  let crc = 0xffffffff;
+
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      const mask = -(crc & 1);
+      crc = ((crc >>> 1) ^ (0xedb88320 & mask)) >>> 0;
+    }
+  }
+
+  crc = (crc ^ 0xffffffff) >>> 0;
+  return [(crc >>> 24) & 0xff, (crc >>> 16) & 0xff, (crc >>> 8) & 0xff, crc & 0xff];
+}
+
+/**
+ * Calculate Modbus RTU CRC-16 (polynomial 0xA001 reflected, init 0xFFFF).
+ * Returns 2 bytes in wire order: low byte first, then high byte.
+ *
+ * This is the same algorithm as `calculateCRC16` (CRC-16/IBM); the alias
+ * exists so the Modbus preset is explicit in the UI and in the code.
+ */
+export function calculateModbusCRC16(data: Uint8Array): number[] {
+  return calculateCRC16(data);
 }
 
 /**
@@ -143,6 +173,10 @@ export function calculateChecksum(data: Uint8Array, config: ChecksumConfig): num
       return calculateCRC8(rangeData);
     case 'CRC16':
       return calculateCRC16(rangeData);
+    case 'CRC32':
+      return calculateCRC32(rangeData);
+    case 'MODBUS-CRC16':
+      return calculateModbusCRC16(rangeData);
     case 'CCITT-CRC16':
       return calculateCCITTCRC16(rangeData);
     default:
@@ -162,8 +196,11 @@ export function getChecksumLength(type: ChecksumType): number {
     case 'CRC8':
       return 1;
     case 'CRC16':
+    case 'MODBUS-CRC16':
     case 'CCITT-CRC16':
       return 2;
+    case 'CRC32':
+      return 4;
     default:
       return 0;
   }

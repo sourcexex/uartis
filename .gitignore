@@ -1,7 +1,6 @@
 # Rust
 /target/
 **/*.rs.bk
-Cargo.lock
 
 # Tauri
 /src-tauri/target/
@@ -10,7 +9,6 @@ Cargo.lock
 # Frontend
 /frontend/dist/
 /frontend/node_modules/
-/frontend/package-lock.json
 
 # Database
 *.db
@@ -56,6 +54,9 @@ coverage/
 *.profraw
 
 # Documentation build
+# `*.md` stays ignored by default so ad-hoc notes are not committed; the
+# allow-list below keeps the actual docs (README/CONTRIBUTING/AGENTS/docs/)
+# and this repo's planning documents trackable.
 /book/
 *.md
 !README.md
@@ -63,4 +64,6 @@ coverage/
 !AGENTS.md
 !CONTRIBUTING.md
 !CONTRIBUTING.zh-CN.md
+!CHANGELOG.md
 !.github/**/*.md
+!docs/**/*.md

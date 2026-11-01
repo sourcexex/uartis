@@ -45,6 +45,17 @@ if ! git merge-base --is-ancestor "$SHA" "origin/${PROD_BRANCH}"; then
   fail "Condition 1 failed: tagged commit $SHA is not on the ${PROD_BRANCH} branch"
 fi
 
+# Require the tag to point at the current production HEAD, not a stale commit
+# that merely happened to be on main once. Set RELEASE_GATE_REQUIRE_HEAD=0 to
+# allow an ancestor commit (e.g. a deliberate back-tag).
+if [[ "${RELEASE_GATE_REQUIRE_HEAD:-1}" != "0" ]]; then
+  ORIGIN_HEAD="$(git rev-parse "origin/${PROD_BRANCH}")"
+  if [[ "$SHA" != "$ORIGIN_HEAD" ]]; then
+    fail "Condition 1 failed: tagged commit $SHA is not origin/${PROD_BRANCH} HEAD ($ORIGIN_HEAD)"
+  fi
+  echo "Condition 1b passed: tag points at origin/${PROD_BRANCH} HEAD"
+fi
+
 echo "Condition 1 passed: $SHA is on origin/${PROD_BRANCH}"
 
 # Previous version tag (excluding the tag we just pushed)
@@ -61,6 +72,16 @@ else
   if git diff --quiet "$PREV_TAG" "$SHA" -- version.json; then
     fail "Condition 2 failed: version.json did not change since $PREV_TAG"
   fi
+
+  PREV_VERSION="${PREV_TAG#[vV]}"
+  if [[ "$PREV_VERSION" == "$TAG_VERSION" ]]; then
+    fail "Condition 2 failed: tag $TAG_REF does not advance the version (previous: $PREV_TAG)"
+  fi
+  LOWEST_VERSION="$(printf '%s\n%s\n' "$PREV_VERSION" "$TAG_VERSION" | sort -V | head -n 1)"
+  if [[ "$LOWEST_VERSION" != "$PREV_VERSION" ]]; then
+    fail "Condition 2 failed: tag $TAG_REF is older than previous release $PREV_TAG"
+  fi
+  echo "Condition 2b passed: $PREV_VERSION -> $TAG_VERSION is a version increase"
 fi
 
 echo "Condition 2 passed: version.json changed for this release"

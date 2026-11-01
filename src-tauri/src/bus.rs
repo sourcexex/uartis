@@ -103,8 +103,10 @@ pub struct Subscription {
 
 impl Subscription {
     /// Block (bounded) until a batch is ready per the Nagle rules:
+    ///
     /// 1. idle consumer + lone frame + min_interval elapsed => push immediately
     /// 2. otherwise accumulate until max_delay / max_bytes / max_frames
+    ///
     /// Returns `None` on timeout with no frames (lets the pump react to
     /// external state); the subscription lives for the app's lifetime.
     pub fn recv_batch(&self) -> Option<FrameBatch> {
@@ -113,11 +115,7 @@ impl Subscription {
 
         // Wait for the first frame, bounded by max_delay.
         while st.queue.is_empty() {
-            let (g, timed_out) = self
-                .shared
-                .cond
-                .wait_timeout(st, policy.max_delay)
-                .unwrap();
+            let (g, timed_out) = self.shared.cond.wait_timeout(st, policy.max_delay).unwrap();
             st = g;
             if st.queue.is_empty() && timed_out.timed_out() {
                 return None;
@@ -249,7 +247,10 @@ impl FrameBus {
             cond: Condvar::new(),
             queue_frames: policy.queue_frames,
         });
-        self.subscribers.lock().unwrap().push(Arc::downgrade(&shared));
+        self.subscribers
+            .lock()
+            .unwrap()
+            .push(Arc::downgrade(&shared));
         Subscription {
             shared,
             policy,
@@ -321,7 +322,7 @@ mod tests {
         let bus = FrameBus::new();
         bus.start_session();
         let sub = bus.subscribe(fast_policy()); // queue_frames = 4
-        // Publish 6 without draining: frames 1-2 are dropped as oldest.
+                                                // Publish 6 without draining: frames 1-2 are dropped as oldest.
         for i in 0..6u32 {
             bus.publish(&bus.alloc_frame(Direction::Received, i.to_le_bytes().to_vec()));
         }
@@ -340,6 +341,12 @@ mod tests {
         let start = Instant::now();
         assert!(sub.recv_batch().is_none());
         let elapsed = start.elapsed();
-        assert!(elapsed >= Duration::from_millis(5) && elapsed < Duration::from_millis(50));
+        // The lower bound pins "blocks for the policy delay"; the upper bound
+        // is deliberately loose because this runs on loaded CI runners where a
+        // 5 ms timer can overshoot by tens of milliseconds.
+        assert!(
+            elapsed >= Duration::from_millis(5) && elapsed < Duration::from_millis(250),
+            "unexpected bounded-wait duration: {elapsed:?}"
+        );
     }
 }

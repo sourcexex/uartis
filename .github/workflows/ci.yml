@@ -1,12 +1,17 @@
 name: CI
 
-# PR-level safety net. Runs the Rust test suite and a frontend type-check + build.
+# PR/push safety net. Runs the engine gates that must stay green before a
+# release tag is pushed:
+#   - the four version files agree (version.json / Cargo.toml / tauri.conf.json / package.json)
+#   - Rust formatting + clippy
+#   - Rust tests on macOS and Windows, Linux compile check
+#   - frontend typecheck + production build
 # Release packaging stays in release.yml (tag pushes only).
 on:
   pull_request:
     branches: [develop, main]
   push:
-    branches: [develop]
+    branches: [develop, main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -15,12 +20,92 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  rust:
-    name: Rust test
-    # macOS matches the release runner and needs no extra system packages for Tauri.
-    runs-on: macos-latest
-    timeout-minutes: 30
+  version-consistency:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check the four version files agree
+        run: bash scripts/check-versions.sh
+
+  rust-fmt:
+    name: Rust fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+  rust-clippy:
+    name: Rust clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            libudev-dev \
+            pkg-config \
+            patchelf
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # tauri::generate_context! requires frontendDist to exist at compile time.
+      - name: Create frontend dist placeholder
+        run: |
+          mkdir -p frontend/dist
+          echo '<!doctype html><title>ci placeholder</title>' > frontend/dist/index.html
+
+      - name: cargo clippy -D warnings
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+  rust-test:
+    name: Rust test (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            platform: macos-latest
+          - name: Windows
+            platform: windows-latest
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,13 +120,53 @@ jobs:
 
       # tauri::generate_context! requires frontendDist to exist at compile time.
       - name: Create frontend dist placeholder
+        shell: bash
         run: |
           mkdir -p frontend/dist
           echo '<!doctype html><title>ci placeholder</title>' > frontend/dist/index.html
 
-      - name: Run tests
+      - name: cargo test
         working-directory: src-tauri
-        run: cargo test
+        run: cargo test --locked
+
+  linux-check:
+    name: Linux cargo check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            libudev-dev \
+            pkg-config \
+            patchelf
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Create frontend dist placeholder
+        run: |
+          mkdir -p frontend/dist
+          echo '<!doctype html><title>ci placeholder</title>' > frontend/dist/index.html
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --all-targets --locked
 
   frontend:
     name: Frontend typecheck + build
@@ -54,15 +179,29 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Format check
+        working-directory: frontend
+        run: npm run format:check
+
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
 
       - name: Type-check
         working-directory: frontend
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Build
         working-directory: frontend

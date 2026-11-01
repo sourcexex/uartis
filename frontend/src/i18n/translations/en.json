@@ -2,7 +2,8 @@
   "app": {
     "title": "Uartis",
     "subtitle": "Serial Debug Assistant",
-    "connectionLost": "Connection lost: {error}"
+    "connectionLost": "Connection lost: {error}",
+    "connectFailed": "Failed to connect: {error}"
   },
   "sidebar": {
     "expandSidebar": "Expand Sidebar",
@@ -23,7 +24,12 @@
     "manufacturer": "Manufacturer",
     "product": "Product",
     "serial": "Serial",
-    "unknownDevice": "Unknown Device"
+    "unknownDevice": "Unknown Device",
+    "serialControl": "Line Control",
+    "breakLabel": "Break",
+    "breakTitle": "Send BREAK (250 ms)",
+    "disconnectTitle": "Disconnect from the port?",
+    "disconnectDescription": "Recording and scheduled sending will stop. The log history is kept."
   },
   "configPanel": {
     "communication": "Communication",
@@ -51,6 +57,11 @@
     "export": "Export",
     "clear": "Clear",
     "exportLogs": "Export logs",
+    "exportTxt": "Export as TXT",
+    "exportCsv": "Export as CSV",
+    "exportJson": "Export as JSON",
+    "exportSuccess": "Logs exported to {path}",
+    "exportFailed": "Failed to export logs: {error}",
     "clearLogs": "Clear logs",
     "search": "Search",
     "searchPlaceholder": "Search logs...",
@@ -78,7 +89,14 @@
     "rx": "RX",
     "total": "Total",
     "bytes": "Bytes",
-    "framesDropped": "⋯ dropped {n} frames (channel overloaded) ⋯"
+    "framesDropped": "⋯ dropped {n} frames (channel overloaded) ⋯",
+    "newSession": "New session",
+    "clearTitle": "Clear all logs?",
+    "clearDescription": "The current log buffer will be removed. This cannot be undone.",
+    "timestampMode": "Time format",
+    "timestampAbsolute": "Absolute",
+    "timestampRelative": "Relative",
+    "timestampDelta": "Delta"
   },
   "sendPanel": {
     "payload": "Payload",
@@ -92,6 +110,9 @@
     "startScheduled": "Start scheduled sending",
     "intervalTitle": "Send interval in milliseconds",
     "rateExceeded": "Send rate ~{rate} exceeds line capacity {capacity} — sends will keep timing out",
+    "sendFailed": "Send failed: {error}",
+    "sendHexOddLength": "Hex string must have an even number of characters",
+    "sendHexInvalid": "Invalid hex characters",
     "characters": "Characters",
     "bytes": "Bytes",
     "quickInsert": "Quick Insert",
@@ -112,7 +133,8 @@
     "crLf": "CR + LF",
     "nullByte": "Null byte",
     "escape": "Escape",
-    "spaceChar": "Space character"
+    "spaceChar": "Space character",
+    "lineEnding": "Line ending"
   },
   "statusBar": {
     "connectedTo": "Connected to",
@@ -137,7 +159,7 @@
     "defaultLogPathDesc": "Where logs are automatically saved",
     "browseFolderTitle": "Browse folder",
     "maxLogLines": "Maximum Log Lines",
-    "maxLogLinesDesc": "Number of log entries to display (1000-100000)",
+    "maxLogLinesDesc": "Number of log entries to display (100-10000)",
     "textEncoding": "Text Encoding",
     "textEncodingDesc": "Encoding for sending and receiving text data",
     "convertSpecialChars": "Convert Special Characters",
@@ -189,7 +211,9 @@
   },
   "common": {
     "text": "Text",
-    "hex": "Hex"
+    "hex": "Hex",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
   },
   "quickCommand": {
     "name": "Name",
@@ -211,6 +235,8 @@
     "loopSend": "Loop Send",
     "loopSendTitle": "Send selected commands repeatedly",
     "listSend": "Send Selected",
-    "endingNone": "None"
+    "endingNone": "None",
+    "deleteListTitle": "Delete this command list?",
+    "deleteListDescription": "All commands in this list will be removed."
   }
 }
