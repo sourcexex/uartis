@@ -23,8 +23,20 @@
 - [x] `scripts/check-versions.sh` 通过。
 - [x] `cargo fmt --check` / `cargo clippy -D warnings` / `cargo test`（63 项）。
 - [x] `npm run lint` / `format:check` / `test`（8 项）/ `typecheck` / `build`。
+- [x] 本地 Windows NSIS 安装包构建成功（`npx @tauri-apps/cli@2 build --bundles nsis`，release 编译 4m13s）。
 - [ ] 真机串口冒烟（本机无设备）。
 - [ ] GitHub Actions 首跑。
+
+### 1.1 本地 Windows 安装包
+
+| 项 | 值 |
+|---|---|
+| 路径 | `src-tauri/target/release/bundle/nsis/Uartis_1.1.0_x64-setup.exe` |
+| 大小 | 5,301,271 bytes（约 5.1 MB） |
+| SHA256 | `998BE4CE9406D5441DF23F3D081B489DDDDF192F0A2DFDA6D23AA81BDB2730C8` |
+| 产物 | 未签名 NSIS，仅供本地冒烟；正式发布由 CI 重建并生成 `SHA256SUMS.txt` |
+
+> 构建时有 `STATIC_VCRUNTIME is deprecated` 警告（Tauri 2 提示改用 `build.windows.staticVCRuntime`），不影响产物；可在 v1.1.x 清理。
 
 ## 2. 推送与 PR（需要凭证）
 
