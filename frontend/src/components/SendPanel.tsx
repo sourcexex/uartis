@@ -1,12 +1,26 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Send, Shield, ChevronDown, ChevronUp, List, FileText, AlertTriangle } from 'lucide-react';
-import { DataFormat, ChecksumType, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, SerialConfig } from '../types';
+import {
+  DataFormat,
+  ChecksumType,
+  ChecksumConfig,
+  QuickCommandList,
+  QuickCommand,
+  LineEnding,
+  SerialConfig,
+} from '../types';
 import QuickCommandPanel from './QuickCommandPanel';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 import { getChecksumLength, calculateChecksum } from '../utils/checksum';
-import { getTextEncoding, textToHex as encodeTextToHex, hexToText as decodeHexToText } from '../utils/encoding';
+import {
+  getTextEncoding,
+  textToBytes,
+  textToHex as encodeTextToHex,
+  hexToText as decodeHexToText,
+} from '../utils/encoding';
 import { isMacPlatform } from '../utils/platform';
+import { useSendHistory } from '../hooks/useSendHistory';
 
 // shadcn components
 import { Button } from '@/components/ui/button';
@@ -20,11 +34,11 @@ type SendMode = 'normal' | 'quickCommand';
 
 // Minimum heights for different modes (exported for use in App.tsx)
 export const SEND_PANEL_MIN_HEIGHTS = {
-  normalText: 180,           // Header + textarea (min) + controls
-  normalTextChecksum: 216,   // + checksum expanded row
-  normalHex: 220,            // Header + textarea (min) + controls + quick insert row
-  normalHexChecksum: 256,    // + checksum expanded row
-  quickCommand: 280,         // Header + quick command panel
+  normalText: 180, // Header + textarea (min) + controls
+  normalTextChecksum: 216, // + checksum expanded row
+  normalHex: 220, // Header + textarea (min) + controls + quick insert row
+  normalHexChecksum: 256, // + checksum expanded row
+  quickCommand: 280, // Header + quick command panel
 };
 
 // Format hex input: filter non-hex chars, add spaces every 2 chars
@@ -49,7 +63,9 @@ interface SendPanelProps {
   onChange: (value: string) => void;
   format: DataFormat;
   onFormatChange: (format: DataFormat) => void;
-  onSend: () => void;
+  /** Resolves true when the send actually went out; false when it failed or
+   *  was skipped (hex parse error, disconnected). Used to record history. */
+  onSend: (lineEnding: LineEnding) => Promise<boolean> | boolean | void;
   isConnected: boolean;
   config: SerialConfig;
   checksumConfig: ChecksumConfig;
@@ -97,6 +113,36 @@ const SendPanel: React.FC<SendPanelProps> = ({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isChecksumExpanded, setIsChecksumExpanded] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+  // Outbound line-ending map (S1-16): None / CR / LF / CRLF. Persisted so the
+  // same choice applies to manual and scheduled sends.
+  const [sendLineEnding, setSendLineEnding] = useState<LineEnding>(() => {
+    const saved = localStorage.getItem('uartis_sendLineEnding');
+    return saved === '\\r' || saved === '\\n' || saved === '\\r\\n' ? (saved as LineEnding) : 'None';
+  });
+  const lineEndingRef = useRef<LineEnding>(sendLineEnding);
+  useEffect(() => {
+    lineEndingRef.current = sendLineEnding;
+    localStorage.setItem('uartis_sendLineEnding', sendLineEnding);
+  }, [sendLineEnding]);
+  const [checksumPreview, setChecksumPreview] = useState('');
+
+  // Scheduled sends must call the *current* handler: the interval is created
+  // once and would otherwise keep sending the payload it was started with
+  // (S1-03). The same pattern applies to manual sends from the timer.
+  const onSendRef = useRef(onSend);
+  useEffect(() => {
+    onSendRef.current = onSend;
+  }, [onSend]);
+
+  // Send history (S1-12): ↑/↓ recall inside the textarea.
+  const { history: sendHistory, push: pushSendHistory } = useSendHistory();
+  const historyIndexRef = useRef(-1); // -1 = live draft (not browsing history)
+  const historyDraftRef = useRef('');
+
+  const resetHistoryNavigation = useCallback(() => {
+    historyIndexRef.current = -1;
+    historyDraftRef.current = '';
+  }, []);
 
   // Line capacity in bytes/s: 1 start bit + data bits + optional parity bit
   // + stop bits per byte on the wire.
@@ -110,77 +156,144 @@ const SendPanel: React.FC<SendPanelProps> = ({
   // Payload per scheduled send in bytes (UTF-8 approximation in Text mode;
   // this is a guard rail, not an exact meter).
   const payloadBytes = useMemo(() => {
-    const base = format === 'Hex'
-      ? value.replace(/\s/g, '').length / 2
-      : new TextEncoder().encode(value).length;
+    const base = format === 'Hex' ? value.replace(/\s/g, '').length / 2 : new TextEncoder().encode(value).length;
     return base + getChecksumLength(checksumConfig.type);
   }, [value, format, checksumConfig.type]);
 
   const requiredRateBps = (payloadBytes * 1000) / scheduledInterval;
   const showRateWarning = isScheduledEnabled && payloadBytes > 0 && requiredRateBps > lineCapacityBps * 0.9;
-  const formatRate = (bps: number) =>
-    bps >= 1024 ? `${(bps / 1024).toFixed(1)} KB/s` : `${Math.round(bps)} B/s`;
+  const formatRate = (bps: number) => (bps >= 1024 ? `${(bps / 1024).toFixed(1)} KB/s` : `${Math.round(bps)} B/s`);
 
   // Calculate disabled state for normal mode (depends on both connection AND content)
   const isNormalSendDisabled = !isConnected || !value.trim() || isScheduledEnabled || isConverting;
   // Calculate disabled state for quick mode (depends ONLY on connection)
   const isQuickModeDisabled = !isConnected;
 
-  const checksumTypes: ChecksumType[] = ['None', 'XOR', 'ADD8', 'CRC8', 'CRC16', 'CCITT-CRC16'];
+  const checksumTypes: ChecksumType[] = [
+    'None',
+    'XOR',
+    'ADD8',
+    'CRC8',
+    'CRC16',
+    'MODBUS-CRC16',
+    'CRC32',
+    'CCITT-CRC16',
+  ];
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      if (isConnected && value.trim()) {
-        onSend();
-      }
+  const handleSendClick = async () => {
+    if (!isConnected || !value.trim()) return;
+    const result = await onSend(sendLineEnding);
+    // `undefined` comes from handlers that predate the boolean contract;
+    // treat it as success so history still works.
+    if (result !== false) {
+      pushSendHistory(value, format);
+      resetHistoryNavigation();
     }
   };
 
-  const handleSendClick = () => {
-    if (isConnected && value.trim()) {
-      onSend();
+  /**
+   * ↑/↓ history recall (S1-12). Only when there is no selection and the
+   * caret is on the first/last logical line, so multi-line editing is
+   * unaffected.
+   */
+  const applyHistoryEntry = (index: number) => {
+    const text = sendHistory[index].text;
+    // Recalling a Text entry while in Hex mode must still yield valid hex.
+    onChange(format === 'Hex' ? formatHexInput(text) : text);
+  };
+
+  const handleHistoryNavigation = (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    // Never hijack arrow keys while an IME candidate window is open.
+    if (e.nativeEvent.isComposing) return false;
+    if (sendHistory.length === 0) return false;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return false;
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return false;
+    const target = e.currentTarget;
+    const { selectionStart, selectionEnd, value: currentValue } = target;
+    if (selectionStart !== selectionEnd) return false;
+
+    if (e.key === 'ArrowUp') {
+      if (currentValue.slice(0, selectionStart).includes('\n')) return false;
+      e.preventDefault();
+      if (historyIndexRef.current === -1) {
+        historyDraftRef.current = currentValue;
+        historyIndexRef.current = 0;
+      } else if (historyIndexRef.current < sendHistory.length - 1) {
+        historyIndexRef.current += 1;
+      }
+      applyHistoryEntry(historyIndexRef.current);
+      return true;
+    }
+
+    // ArrowDown: only active while browsing history.
+    if (historyIndexRef.current === -1) return false;
+    if (currentValue.slice(selectionEnd).includes('\n')) return false;
+    e.preventDefault();
+    if (historyIndexRef.current <= 0) {
+      historyIndexRef.current = -1;
+      onChange(historyDraftRef.current);
+    } else {
+      historyIndexRef.current -= 1;
+      applyHistoryEntry(historyIndexRef.current);
+    }
+    return true;
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (handleHistoryNavigation(e)) return;
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      if (isConnected && value.trim()) {
+        void handleSendClick();
+      }
     }
   };
 
   // Handle format change with automatic conversion using configured encoding
-  const handleFormatChange = useCallback(async (newFormat: DataFormat) => {
-    if (newFormat === format || isConverting) return;
+  const handleFormatChange = useCallback(
+    async (newFormat: DataFormat) => {
+      if (newFormat === format || isConverting) return;
 
-    setIsConverting(true);
-    try {
-      // Read encoding fresh from localStorage to ensure we use the latest setting
-      const currentEncoding = getTextEncoding();
-      if (newFormat === 'Hex') {
-        // Convert text to hex using configured encoding
-        const hexValue = await encodeTextToHex(value, currentEncoding);
-        onChange(hexValue);
-      } else {
-        // Convert hex to text using configured encoding
-        const textValue = await decodeHexToText(value, currentEncoding);
-        onChange(textValue);
+      setIsConverting(true);
+      try {
+        // Read encoding fresh from localStorage to ensure we use the latest setting
+        const currentEncoding = getTextEncoding();
+        if (newFormat === 'Hex') {
+          // Convert text to hex using configured encoding
+          const hexValue = await encodeTextToHex(value, currentEncoding);
+          onChange(hexValue);
+        } else {
+          // Convert hex to text using configured encoding
+          const textValue = await decodeHexToText(value, currentEncoding);
+          onChange(textValue);
+        }
+        onFormatChange(newFormat);
+      } catch (error) {
+        console.error('Error converting format:', error);
+      } finally {
+        setIsConverting(false);
       }
-      onFormatChange(newFormat);
-    } catch (error) {
-      console.error('Error converting format:', error);
-    } finally {
-      setIsConverting(false);
-    }
-  }, [format, value, onChange, onFormatChange, isConverting]);
+    },
+    [format, value, onChange, onFormatChange, isConverting]
+  );
 
   // Handle input change with hex validation and auto-spacing
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const newValue = e.target.value;
+      const nextValue = format === 'Hex' ? formatHexInput(newValue) : newValue;
 
-    if (format === 'Hex') {
-      // Format and validate hex input
-      const formattedHex = formatHexInput(newValue);
-      onChange(formattedHex);
-    } else {
-      // Text mode: no restrictions
-      onChange(newValue);
-    }
-  }, [format, value, onChange]);
+      // Typing while browsing history drops the recall cursor, so ↑ starts from
+      // the (edited) draft rather than jumping to an unrelated old entry.
+      if (historyIndexRef.current !== -1 && nextValue !== sendHistory[historyIndexRef.current]?.text) {
+        resetHistoryNavigation();
+      }
+
+      onChange(nextValue);
+    },
+    [format, onChange, sendHistory, resetHistoryNavigation]
+  );
 
   const handleScheduledToggle = () => {
     const newEnabledState = !isScheduledEnabled;
@@ -222,7 +335,9 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
     setIsScheduledRunning(true);
     intervalRef.current = setInterval(() => {
-      onSend();
+      // Always call the latest handler: the payload/format/checksum may have
+      // changed since the timer was started.
+      void onSendRef.current(lineEndingRef.current);
     }, scheduledInterval);
   };
 
@@ -253,6 +368,16 @@ const SendPanel: React.FC<SendPanelProps> = ({
     }
   }, [isConnected, value]);
 
+  // Switching to the quick-command tab hides the schedule controls; a timer
+  // that kept running would send invisibly, so stop it on every mode change
+  // (S1-03).
+  useEffect(() => {
+    stopScheduledSending();
+    setIsScheduledEnabled(false);
+    // Only mode changes should reset the schedule.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendMode]);
+
   // Report minimum height changes to parent
   useEffect(() => {
     if (!onMinHeightChange) return;
@@ -261,13 +386,15 @@ const SendPanel: React.FC<SendPanelProps> = ({
     if (sendMode === 'quickCommand') {
       minHeight = SEND_PANEL_MIN_HEIGHTS.quickCommand;
     } else if (format === 'Hex') {
-      minHeight = checksumConfig.type !== 'None' && isChecksumExpanded
-        ? SEND_PANEL_MIN_HEIGHTS.normalHexChecksum
-        : SEND_PANEL_MIN_HEIGHTS.normalHex;
+      minHeight =
+        checksumConfig.type !== 'None' && isChecksumExpanded
+          ? SEND_PANEL_MIN_HEIGHTS.normalHexChecksum
+          : SEND_PANEL_MIN_HEIGHTS.normalHex;
     } else {
-      minHeight = checksumConfig.type !== 'None' && isChecksumExpanded
-        ? SEND_PANEL_MIN_HEIGHTS.normalTextChecksum
-        : SEND_PANEL_MIN_HEIGHTS.normalText;
+      minHeight =
+        checksumConfig.type !== 'None' && isChecksumExpanded
+          ? SEND_PANEL_MIN_HEIGHTS.normalTextChecksum
+          : SEND_PANEL_MIN_HEIGHTS.normalText;
     }
     onMinHeightChange(minHeight);
   }, [sendMode, format, checksumConfig.type, isChecksumExpanded, onMinHeightChange]);
@@ -295,43 +422,54 @@ const SendPanel: React.FC<SendPanelProps> = ({
     return dataBytes + checksumBytes;
   };
 
-  // Calculate checksum preview
-  const checksumPreview = useMemo(() => {
+  // Checksum preview must use the same bytes the backend will send. Text is
+  // encoded with the configured encoding (GBK goes through the backend
+  // command), so the preview is computed asynchronously and cancelled when
+  // the payload changes (S1-08).
+  useEffect(() => {
     if (checksumConfig.type === 'None' || !value.trim()) {
-      return '';
+      setChecksumPreview('');
+      return;
     }
-
-    try {
-      let dataBytes: Uint8Array;
-      if (format === 'Text') {
-        dataBytes = new TextEncoder().encode(value);
-      } else {
-        // Parse hex string to bytes
-        const cleanHex = value.replace(/\s/g, '');
-        const bytes: number[] = [];
-        for (let i = 0; i < cleanHex.length; i += 2) {
-          const byte = parseInt(cleanHex.substring(i, i + 2), 16);
-          if (!isNaN(byte)) {
-            bytes.push(byte);
+    let cancelled = false;
+    const computePreview = async () => {
+      try {
+        let dataBytes: Uint8Array;
+        if (format === 'Text') {
+          dataBytes = await textToBytes(value, getTextEncoding());
+        } else {
+          // Parse hex string to bytes
+          const cleanHex = value.replace(/\s/g, '');
+          const bytes: number[] = [];
+          for (let i = 0; i < cleanHex.length; i += 2) {
+            const byte = parseInt(cleanHex.substring(i, i + 2), 16);
+            if (!isNaN(byte)) {
+              bytes.push(byte);
+            }
           }
+          dataBytes = new Uint8Array(bytes);
         }
-        dataBytes = new Uint8Array(bytes);
-      }
+        if (cancelled) return;
+        if (dataBytes.length === 0) {
+          setChecksumPreview('');
+          return;
+        }
 
-      if (dataBytes.length === 0) {
-        return '';
+        const checksumBytes = calculateChecksum(dataBytes, checksumConfig);
+        if (cancelled) return;
+        if (checksumBytes.length === 0) {
+          setChecksumPreview('');
+          return;
+        }
+        setChecksumPreview(checksumBytes.map((b) => b.toString(16).toUpperCase().padStart(2, '0')).join(' '));
+      } catch {
+        if (!cancelled) setChecksumPreview('');
       }
-
-      const checksumBytes = calculateChecksum(dataBytes, checksumConfig);
-      if (checksumBytes.length === 0) {
-        return '';
-      }
-
-      // Format as hex string
-      return checksumBytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
-    } catch {
-      return '';
-    }
+    };
+    void computePreview();
+    return () => {
+      cancelled = true;
+    };
   }, [value, format, checksumConfig]);
 
   const insertCommonHex = (hexValue: string) => {
@@ -405,21 +543,25 @@ const SendPanel: React.FC<SendPanelProps> = ({
                     <div>
                       <Select
                         value={checksumConfig.type}
-                        onValueChange={(value) => onChecksumConfigChange({ ...checksumConfig, type: value as ChecksumType })}
+                        onValueChange={(value) =>
+                          onChecksumConfigChange({ ...checksumConfig, type: value as ChecksumType })
+                        }
                       >
                         <SelectTrigger
                           className="h-6 w-[100px] text-xs"
                           style={{
                             backgroundColor: checksumConfig.type !== 'None' ? colors.accent : colors.bgInput,
                             borderColor: colors.borderLight,
-                            color: checksumConfig.type !== 'None' ? '#ffffff' : colors.textSecondary
+                            color: checksumConfig.type !== 'None' ? '#ffffff' : colors.textSecondary,
                           }}
                         >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {checksumTypes.map((type) => (
-                            <SelectItem key={type} value={type}>{type}</SelectItem>
+                            <SelectItem key={type} value={type}>
+                              {type}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -444,7 +586,9 @@ const SendPanel: React.FC<SendPanelProps> = ({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>{isChecksumExpanded ? t('sendPanel.hideChecksumOptions') : t('sendPanel.showChecksumOptions')}</p>
+                      <p>
+                        {isChecksumExpanded ? t('sendPanel.hideChecksumOptions') : t('sendPanel.showChecksumOptions')}
+                      </p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -473,6 +617,24 @@ const SendPanel: React.FC<SendPanelProps> = ({
                 Hex
               </Button>
             </div>
+
+            {/* Line-ending map for normal sends (S1-16) */}
+            <div className="flex items-center space-x-1.5">
+              <span className="text-[10px]" style={{ color: colors.textTertiary }}>
+                {t('sendPanel.lineEnding')}
+              </span>
+              <Select value={sendLineEnding} onValueChange={(value) => setSendLineEnding(value as LineEnding)}>
+                <SelectTrigger className="h-6 w-[68px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="None">{t('quickCommand.endingNone')}</SelectItem>
+                  <SelectItem value={'\\r'}>CR</SelectItem>
+                  <SelectItem value={'\\n'}>LF</SelectItem>
+                  <SelectItem value={'\\r\\n'}>CRLF</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         )}
       </div>
@@ -486,16 +648,25 @@ const SendPanel: React.FC<SendPanelProps> = ({
               className="px-4 py-2 flex items-center space-x-4"
               style={{ borderBottom: `1px solid ${colors.borderLight}`, backgroundColor: colors.bgMain }}
             >
-              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('sendPanel.range')}:</span>
+              <span className="text-xs" style={{ color: colors.textTertiary }}>
+                {t('sendPanel.range')}:
+              </span>
               <div className="flex items-center space-x-2">
-                <span className="text-xs" style={{ color: colors.textSecondary }}>{t('sendPanel.start')}</span>
+                <span className="text-xs" style={{ color: colors.textSecondary }}>
+                  {t('sendPanel.start')}
+                </span>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Input
                         type="number"
                         value={checksumConfig.startIndex}
-                        onChange={(e) => onChecksumConfigChange({ ...checksumConfig, startIndex: Math.max(0, parseInt(e.target.value) || 0) })}
+                        onChange={(e) =>
+                          onChecksumConfigChange({
+                            ...checksumConfig,
+                            startIndex: Math.max(0, parseInt(e.target.value) || 0),
+                          })
+                        }
                         className="w-14 h-6 text-xs text-center"
                         min={0}
                       />
@@ -507,14 +678,21 @@ const SendPanel: React.FC<SendPanelProps> = ({
                 </TooltipProvider>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-xs" style={{ color: colors.textSecondary }}>{t('sendPanel.end')}</span>
+                <span className="text-xs" style={{ color: colors.textSecondary }}>
+                  {t('sendPanel.end')}
+                </span>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Input
                         type="number"
                         value={checksumConfig.endIndex}
-                        onChange={(e) => onChecksumConfigChange({ ...checksumConfig, endIndex: Math.min(0, parseInt(e.target.value) || 0) })}
+                        onChange={(e) =>
+                          onChecksumConfigChange({
+                            ...checksumConfig,
+                            endIndex: Math.min(0, parseInt(e.target.value) || 0),
+                          })
+                        }
                         className="w-14 h-6 text-xs text-center"
                         max={0}
                       />
@@ -546,12 +724,19 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   className="flex-1 w-full min-h-[60px] resize-none text-sm font-mono shadow-inner"
                 />
 
-                <div className="flex items-center justify-between mt-2 text-xs flex-shrink-0" style={{ color: colors.textTertiary }}>
+                <div
+                  className="flex items-center justify-between mt-2 text-xs flex-shrink-0"
+                  style={{ color: colors.textTertiary }}
+                >
                   <div className="flex items-center space-x-4">
                     {format === 'Text' && (
-                      <span>{t('sendPanel.characters')}: {value.length}</span>
+                      <span>
+                        {t('sendPanel.characters')}: {value.length}
+                      </span>
                     )}
-                    <span>{t('sendPanel.bytes')}: {getByteCount()}</span>
+                    <span>
+                      {t('sendPanel.bytes')}: {getByteCount()}
+                    </span>
                     {checksumConfig.type !== 'None' && (
                       <span style={{ color: colors.accent }}>
                         +{getChecksumLength(checksumConfig.type)} ({checksumConfig.type}) = {getTotalByteCount()}
@@ -568,12 +753,10 @@ const SendPanel: React.FC<SendPanelProps> = ({
 
               {/* Controls */}
               <div className="w-40 flex flex-col space-y-2 flex-shrink-0">
-                <Button
-                  onClick={handleSendClick}
-                  disabled={isNormalSendDisabled}
-                  className="w-full h-9"
-                >
-                  <span className="text-sm">{isScheduledEnabled ? t('sendPanel.scheduledActive') : t('sendPanel.send')}</span>
+                <Button onClick={handleSendClick} disabled={isNormalSendDisabled} className="w-full h-9">
+                  <span className="text-sm">
+                    {isScheduledEnabled ? t('sendPanel.scheduledActive') : t('sendPanel.send')}
+                  </span>
                 </Button>
 
                 <div
@@ -581,7 +764,9 @@ const SendPanel: React.FC<SendPanelProps> = ({
                   style={{ backgroundColor: colors.bgInput, border: `1px solid ${colors.borderLight}` }}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('sendPanel.cycle')}</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('sendPanel.cycle')}
+                    </span>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -693,4 +878,6 @@ const SendPanel: React.FC<SendPanelProps> = ({
   );
 };
 
-export default SendPanel;
+const MemoizedSendPanel = React.memo(SendPanel);
+
+export default MemoizedSendPanel;

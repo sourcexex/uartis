@@ -26,13 +26,16 @@ export type DataFormat = 'Text' | 'Hex';
 export type Direction = 'Sent' | 'Received';
 export type TextEncoding = 'utf-8' | 'gbk';
 
+/** Mirrors the Rust `ExportFormat` enum (unit variants serialize as the variant name). */
+export type ExportFormat = 'Txt' | 'Csv' | 'Json';
+
 // Checksum types
-export type ChecksumType = 'None' | 'XOR' | 'ADD8' | 'CRC8' | 'CRC16' | 'CCITT-CRC16';
+export type ChecksumType = 'None' | 'XOR' | 'ADD8' | 'CRC8' | 'CRC16' | 'MODBUS-CRC16' | 'CRC32' | 'CCITT-CRC16';
 
 export interface ChecksumConfig {
   type: ChecksumType;
-  startIndex: number;  // 0-indexed, starting position (0 = first byte)
-  endIndex: number;    // 0-indexed, supports negative (-1 = last byte, -2 = second to last)
+  startIndex: number; // 0-indexed, starting position (0 = first byte)
+  endIndex: number; // 0-indexed, supports negative (-1 = last byte, -2 = second to last)
 }
 
 export interface LogEntry {
@@ -66,15 +69,23 @@ export interface ConnectionStatus {
   connection_error?: string | null;
 }
 
+/** Modem/line input pins reported by the backend (`get_pin_states`). */
+export interface PinStates {
+  cts: boolean;
+  dsr: boolean;
+  ri: boolean;
+  cd: boolean;
+}
+
 // Quick Command types
 export type LineEnding = 'None' | '\\r' | '\\n' | '\\r\\n';
 
 export interface QuickCommand {
   id: string;
-  name: string;           // Optional name for identification
-  selected: boolean;      // For batch sending selection
-  isHex: boolean;         // Send as hex format
-  content: string;        // Command content
+  name: string; // Optional name for identification
+  selected: boolean; // For batch sending selection
+  isHex: boolean; // Send as hex format
+  content: string; // Command content
   lineEnding: LineEnding; // Line ending option
 }
 
@@ -87,23 +98,18 @@ export interface QuickCommandList {
 // Special character conversion settings
 export interface SpecialCharConfig {
   enabled: boolean;
-  convertLF: boolean;     // \n -> ␊
-  convertCR: boolean;     // \r -> ␍
-  convertTab: boolean;    // \t -> ␉
-  convertNull: boolean;   // \0 -> ␀
-  convertEsc: boolean;    // ESC -> ␛
+  convertLF: boolean; // \n -> ␊
+  convertCR: boolean; // \r -> ␍
+  convertTab: boolean; // \t -> ␉
+  convertNull: boolean; // \0 -> ␀
+  convertEsc: boolean; // ESC -> ␛
   convertSpaces: boolean; // trailing/multiple spaces -> ␣
 }
 
 // Frame segmentation types
 export type FrameSegmentationMode = 'Timeout' | 'Combined';
 
-export type FrameDelimiter =
-  | 'AnyNewline'
-  | 'CR'
-  | 'LF'
-  | 'CRLF'
-  | { Custom: number[] };
+export type FrameDelimiter = 'AnyNewline' | 'CR' | 'LF' | 'CRLF' | { Custom: number[] };
 
 export interface FrameSegmentationConfig {
   mode: FrameSegmentationMode;

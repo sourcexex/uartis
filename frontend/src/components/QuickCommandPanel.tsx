@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ConfirmDialog } from './ConfirmDialog';
 
 const LOOP_INTERVAL_KEY = 'quickCommandLoopInterval';
 const DEFAULT_LOOP_INTERVAL = 1000;
@@ -88,10 +89,21 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
   const [iterationCount, setIterationCount] = useState(0);
   const loopTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Latest values for the long-lived loop timer: the timer is created once,
+  // but the selected commands / send handler may change while it runs.
+  const onSendSelectedRef = useRef(onSendSelected);
+  useEffect(() => {
+    onSendSelectedRef.current = onSendSelected;
+  }, [onSendSelected]);
+
   // Track which command index is currently being converted (for disabling input during async conversion)
   const [convertingIndex, setConvertingIndex] = useState<number | null>(null);
 
-  const currentList = lists.find(l => l.id === currentListId) || lists[0];
+  const currentList = lists.find((l) => l.id === currentListId) || lists[0];
+  const currentListRef = useRef(currentList);
+  useEffect(() => {
+    currentListRef.current = currentList;
+  }, [currentList]);
   const lineEndingOptions: { value: LineEnding; label: string }[] = [
     { value: 'None', label: t('quickCommand.endingNone') },
     { value: '\\r', label: '\\r' },
@@ -135,6 +147,23 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
     setIterationCount(0);
   }, []);
 
+  // Signature of what would be sent right now. Editing a selected command,
+  // changing a line ending, toggling HEX or changing the list all stop the
+  // loop, so it can never keep replaying a stale snapshot (S1-03).
+  const selectionSignature = currentList.commands
+    .filter((c) => c.selected && c.content.trim())
+    .map((c) => `${c.id}:${c.isHex ? 1 : 0}:${c.lineEnding}:${c.content}`)
+    .join('|');
+  const isLoopingRef = useRef(isLooping);
+  useEffect(() => {
+    isLoopingRef.current = isLooping;
+  }, [isLooping]);
+  useEffect(() => {
+    if (isLoopingRef.current) {
+      stopLoop();
+    }
+  }, [currentListId, selectionSignature, stopLoop]);
+
   const handleLoopIntervalChange = (value: string) => {
     let numValue = parseInt(value, 10);
     if (isNaN(numValue)) numValue = DEFAULT_LOOP_INTERVAL;
@@ -144,26 +173,29 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
   };
 
   const startLoop = () => {
-    const selectedCommands = currentList.commands.filter(c => c.selected && c.content.trim());
+    const selectedCommands = currentList.commands.filter((c) => c.selected && c.content.trim());
     if (selectedCommands.length === 0 || disabled) return;
 
     // Send immediately (first iteration)
-    onSendSelected(selectedCommands);
+    void onSendSelectedRef.current(selectedCommands);
     setIterationCount(1);
     setIsLooping(true);
 
-    // Schedule subsequent iterations
+    // Schedule subsequent iterations. Re-read the selection from the latest
+    // list each tick and call the latest handler, so the loop cannot keep
+    // replaying a stale snapshot (S1-03).
     loopTimerRef.current = setInterval(() => {
-      const cmds = currentList.commands.filter(c => c.selected && c.content.trim());
+      const latestList = currentListRef.current;
+      const cmds = latestList.commands.filter((c) => c.selected && c.content.trim());
       if (cmds.length > 0) {
-        onSendSelected(cmds);
-        setIterationCount(prev => prev + 1);
+        void onSendSelectedRef.current(cmds);
+        setIterationCount((prev) => prev + 1);
       }
     }, loopInterval);
   };
 
   const updateCurrentList = (updatedCommands: QuickCommand[]) => {
-    const updatedLists = lists.map(list =>
+    const updatedLists = lists.map((list) =>
       list.id === currentListId ? { ...list, commands: updatedCommands } : list
     );
     onListsChange(updatedLists);
@@ -184,40 +216,43 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
   };
 
   // Handle hex toggle with automatic text↔hex conversion
-  const handleHexToggle = useCallback(async (index: number) => {
-    const command = currentList.commands[index];
-    const newIsHex = !command.isHex;
+  const handleHexToggle = useCallback(
+    async (index: number) => {
+      const command = currentList.commands[index];
+      const newIsHex = !command.isHex;
 
-    // Skip conversion if content is empty
-    if (!command.content.trim()) {
-      handleCommandChange(index, 'isHex', newIsHex);
-      return;
-    }
-
-    setConvertingIndex(index);
-    try {
-      const encoding = getTextEncoding();
-      let newContent: string;
-
-      if (newIsHex) {
-        // Converting text to hex
-        newContent = await textToHex(command.content, encoding);
-      } else {
-        // Converting hex to text
-        newContent = await hexToText(command.content, encoding);
+      // Skip conversion if content is empty
+      if (!command.content.trim()) {
+        handleCommandChange(index, 'isHex', newIsHex);
+        return;
       }
 
-      const updatedCommands = [...currentList.commands];
-      updatedCommands[index] = { ...updatedCommands[index], isHex: newIsHex, content: newContent };
-      updateCurrentList(updatedCommands);
-    } catch (error) {
-      console.error('Error converting format:', error);
-      // Still toggle the mode even if conversion fails
-      handleCommandChange(index, 'isHex', newIsHex);
-    } finally {
-      setConvertingIndex(null);
-    }
-  }, [currentList.commands, currentListId, lists, onListsChange]);
+      setConvertingIndex(index);
+      try {
+        const encoding = getTextEncoding();
+        let newContent: string;
+
+        if (newIsHex) {
+          // Converting text to hex
+          newContent = await textToHex(command.content, encoding);
+        } else {
+          // Converting hex to text
+          newContent = await hexToText(command.content, encoding);
+        }
+
+        const updatedCommands = [...currentList.commands];
+        updatedCommands[index] = { ...updatedCommands[index], isHex: newIsHex, content: newContent };
+        updateCurrentList(updatedCommands);
+      } catch (error) {
+        console.error('Error converting format:', error);
+        // Still toggle the mode even if conversion fails
+        handleCommandChange(index, 'isHex', newIsHex);
+      } finally {
+        setConvertingIndex(null);
+      }
+    },
+    [currentList.commands, currentListId, lists, onListsChange]
+  );
 
   const handleAddMoreCommands = () => {
     if (currentList.commands.length >= MAX_COMMANDS) return;
@@ -234,7 +269,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
   };
 
   const handleSendAllSelected = () => {
-    const selectedCommands = currentList.commands.filter(c => c.selected && c.content.trim());
+    const selectedCommands = currentList.commands.filter((c) => c.selected && c.content.trim());
     if (selectedCommands.length === 0 || disabled) return;
     onSendSelected(selectedCommands);
   };
@@ -248,12 +283,15 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
 
   const handleDeleteList = (listId: string) => {
     if (lists.length <= 1) return; // Keep at least one list
-    const updatedLists = lists.filter(l => l.id !== listId);
+    const updatedLists = lists.filter((l) => l.id !== listId);
     onListsChange(updatedLists);
     if (currentListId === listId) {
       onCurrentListChange(updatedLists[0].id);
     }
+    setPendingDeleteListId(null);
   };
+
+  const [pendingDeleteListId, setPendingDeleteListId] = useState<string | null>(null);
 
   const handleStartEditName = (list: QuickCommandList) => {
     setEditingListId(list.id);
@@ -262,7 +300,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
 
   const handleSaveEditName = () => {
     if (!editingListId || !editingName.trim()) return;
-    const updatedLists = lists.map(list =>
+    const updatedLists = lists.map((list) =>
       list.id === editingListId ? { ...list, name: editingName.trim() } : list
     );
     onListsChange(updatedLists);
@@ -276,27 +314,24 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
   };
 
   const handleSelectAll = () => {
-    const allSelected = currentList.commands.every(c => c.selected);
-    const updatedCommands = currentList.commands.map(c => ({ ...c, selected: !allSelected }));
+    const allSelected = currentList.commands.every((c) => c.selected);
+    const updatedCommands = currentList.commands.map((c) => ({ ...c, selected: !allSelected }));
     updateCurrentList(updatedCommands);
   };
 
-  const selectedCount = currentList.commands.filter(c => c.selected && c.content.trim()).length;
+  const selectedCount = currentList.commands.filter((c) => c.selected && c.content.trim()).length;
 
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: colors.bgSidebar }}>
       {/* Command List */}
-      <div
-        ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto scrollbar-thin min-h-0"
-      >
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
         {/* Header Row */}
         <div
           className="sticky top-0 z-10 flex items-center px-3 py-1.5 text-xs font-medium"
           style={{
             backgroundColor: colors.bgSurface,
             borderBottom: `1px solid ${colors.borderLight}`,
-            color: colors.textTertiary
+            color: colors.textTertiary,
           }}
         >
           <div className="w-7 flex justify-center">
@@ -305,7 +340,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                 <TooltipTrigger asChild>
                   <div>
                     <Checkbox
-                      checked={currentList.commands.length > 0 && currentList.commands.every(c => c.selected)}
+                      checked={currentList.commands.length > 0 && currentList.commands.every((c) => c.selected)}
                       onCheckedChange={handleSelectAll}
                     />
                   </div>
@@ -330,7 +365,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
             className="flex items-center px-3 py-1 group"
             style={{
               borderBottom: `1px solid ${colors.borderLight}`,
-              backgroundColor: command.selected ? `${colors.accent}10` : 'transparent'
+              backgroundColor: command.selected ? `${colors.accent}10` : 'transparent',
             }}
           >
             {/* Selection Checkbox */}
@@ -396,8 +431,10 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {lineEndingOptions.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  {lineEndingOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -437,7 +474,9 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
               className="flex items-center space-x-1.5 text-xs"
             >
               <Plus size={14} />
-              <span>{t('quickCommand.addMore')} ({currentList.commands.length}/{MAX_COMMANDS})</span>
+              <span>
+                {t('quickCommand.addMore')} ({currentList.commands.length}/{MAX_COMMANDS})
+              </span>
             </Button>
           </div>
         )}
@@ -448,7 +487,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
         className="flex items-center justify-between px-3 py-2"
         style={{
           borderTop: `1px solid ${colors.borderDark}`,
-          backgroundColor: colors.bgSurface
+          backgroundColor: colors.bgSurface,
         }}
       >
         {/* List Selector */}
@@ -469,16 +508,16 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
               className="absolute bottom-full left-0 mb-1 w-56 rounded-lg shadow-lg overflow-hidden z-50"
               style={{
                 backgroundColor: colors.bgSidebar,
-                border: `1px solid ${colors.border}`
+                border: `1px solid ${colors.border}`,
               }}
             >
               <div className="max-h-48 overflow-y-auto">
-                {lists.map(list => (
+                {lists.map((list) => (
                   <div
                     key={list.id}
                     className="flex items-center px-3 py-2 cursor-pointer group"
                     style={{
-                      backgroundColor: list.id === currentListId ? `${colors.accent}20` : 'transparent'
+                      backgroundColor: list.id === currentListId ? `${colors.accent}20` : 'transparent',
                     }}
                     onClick={() => {
                       if (editingListId !== list.id) {
@@ -492,7 +531,8 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                       }
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = list.id === currentListId ? `${colors.accent}20` : 'transparent';
+                      e.currentTarget.style.backgroundColor =
+                        list.id === currentListId ? `${colors.accent}20` : 'transparent';
                     }}
                   >
                     {editingListId === list.id ? (
@@ -551,7 +591,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                                     className="h-6 w-6"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleDeleteList(list.id);
+                                      setPendingDeleteListId(list.id);
                                     }}
                                   >
                                     <Trash2 size={12} style={{ color: colors.error }} />
@@ -575,11 +615,11 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                 className="flex items-center space-x-2 px-3 py-2 cursor-pointer"
                 style={{
                   borderTop: `1px solid ${colors.border}`,
-                  color: colors.accent
+                  color: colors.accent,
                 }}
                 onClick={handleCreateNewList}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.bgHover}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.bgHover)}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
                 <Plus size={14} />
                 <span className="text-sm">{t('quickCommand.newList')}</span>
@@ -611,7 +651,9 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <span className="text-xs" style={{ color: colors.textTertiary }}>ms</span>
+            <span className="text-xs" style={{ color: colors.textTertiary }}>
+              ms
+            </span>
           </div>
 
           {/* Loop Status Indicator */}
@@ -620,22 +662,19 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
               className="flex items-center space-x-1 px-2 py-1 rounded text-xs"
               style={{
                 backgroundColor: `${colors.accent}20`,
-                color: colors.accent
+                color: colors.accent,
               }}
             >
               <RefreshCw size={12} className="animate-spin" />
-              <span>{t('quickCommand.loop')}: {iterationCount}</span>
+              <span>
+                {t('quickCommand.loop')}: {iterationCount}
+              </span>
             </div>
           )}
 
           {/* Loop Send / Stop Button */}
           {isLooping ? (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={stopLoop}
-              className="flex items-center space-x-2"
-            >
+            <Button variant="destructive" size="sm" onClick={stopLoop} className="flex items-center space-x-2">
               <Square size={14} />
               <span>{t('quickCommand.stop')}</span>
             </Button>
@@ -670,12 +709,28 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
             className="flex items-center space-x-2"
           >
             <Play size={14} />
-            <span>{t('quickCommand.listSend')} {selectedCount > 0 ? `(${selectedCount})` : ''}</span>
+            <span>
+              {t('quickCommand.listSend')} {selectedCount > 0 ? `(${selectedCount})` : ''}
+            </span>
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingDeleteListId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteListId(null);
+        }}
+        title={t('quickCommand.deleteListTitle')}
+        description={t('quickCommand.deleteListDescription')}
+        onConfirm={() => {
+          if (pendingDeleteListId) handleDeleteList(pendingDeleteListId);
+        }}
+      />
     </div>
   );
 };
 
-export default QuickCommandPanel;
+const MemoizedQuickCommandPanel = React.memo(QuickCommandPanel);
+
+export default MemoizedQuickCommandPanel;
