@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerialPortInfo {
@@ -20,6 +20,9 @@ pub struct SerialConfig {
     pub parity: Parity,
     pub stop_bits: StopBits,
     pub flow_control: FlowControl,
+    /// RX poll timeout in milliseconds. The backend clamps it to 10..=1000 and
+    /// caps the effective poll interval so idle flushing and disconnect stay
+    /// responsive (audit B-07).
     pub timeout: u64,
 }
 
@@ -132,6 +135,18 @@ pub struct ConnectionStatus {
     pub connection_error: Option<String>,
 }
 
+/// Modem control line states sampled from the open port (S1-10).
+///
+/// Field names are the serialport `read_*` signals: clear-to-send,
+/// data-set-ready, ring-indicator and carrier-detect.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PinStates {
+    pub cts: bool,
+    pub dsr: bool,
+    pub ri: bool,
+    pub cd: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExportFormat {
     Txt,
@@ -149,6 +164,9 @@ pub enum FrameSegmentationMode {
     Combined,
 }
 
+// `CRLF` is the wire-level framing name and must keep its serialized shape;
+// renaming the variant would change the frontend contract (audit T-06).
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub enum FrameDelimiter {
     #[default]
