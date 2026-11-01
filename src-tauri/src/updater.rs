@@ -236,12 +236,27 @@ pub(crate) fn validate_download_url(url: &str) -> Result<(), String> {
 /// so a crafted value such as `..\..\evil.exe` or an absolute path must never
 /// escape the update directory (audit S-02).
 pub(crate) fn sanitize_asset_name(asset_name: &str) -> Result<String, String> {
+    // Reject separators/drive markers explicitly instead of relying on the
+    // host `Path` semantics: on macOS/Linux `\` is an ordinary filename byte,
+    // so `..\..\evil.exe` would otherwise be accepted there while rejected
+    // on Windows (this made the unit test platform-dependent).
+    if asset_name.is_empty()
+        || asset_name == "."
+        || asset_name == ".."
+        || asset_name
+            .bytes()
+            .any(|byte| matches!(byte, b'/' | b'\\' | b':' | 0))
+    {
+        return Err(format!(
+            "Refusing update asset name with path components: {asset_name}"
+        ));
+    }
     let path = Path::new(asset_name);
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| format!("Invalid update asset name: {asset_name}"))?;
-    if file_name != asset_name || asset_name.is_empty() {
+    if file_name != asset_name {
         return Err(format!(
             "Refusing update asset name with path components: {asset_name}"
         ));
