@@ -8,10 +8,10 @@
 
 [![Release](https://img.shields.io/github/v/release/sourcexex/uartis)](https://github.com/sourcexex/uartis/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.90+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/tauri-2.0-purple.svg)](https://tauri.app/)
 [![React](https://img.shields.io/badge/react-18.2-61dafb.svg)](https://reactjs.org/)
-[![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node.js-20+-green.svg)](https://nodejs.org/)
 
 [✨ 功能特性](#-功能特性) | [📦 安装](#-安装) | [🚀 快速开始](#-快速开始) | [📋 使用指南](#-使用指南) | [🔧 开发](#-开发) | [❤️ 贡献](#%EF%B8%8F-贡献)
 
@@ -23,7 +23,7 @@
 
 ## 📖 项目介绍
 
-**Uartis** 是一个专业级的串行通信调试工具，专为嵌入式系统工程师、IoT 开发者和硬件爱好者设计。它结合了 **Rust** 的强大性能和现代 **React** UI 的优雅设计，在 Windows、macOS 和 Linux 上提供无缝的跨平台体验。
+**Uartis** 是一个专业级的串行通信调试工具，专为嵌入式系统工程师、IoT 开发者和硬件爱好者设计。它结合了 **Rust** 的强大性能和现代 **React** UI 的优雅设计，在 Windows 与 macOS 上提供无缝的跨平台体验；Linux 目前可从源码构建，暂未发布官方二进制。
 
 无论您是调试 Arduino 项目、与工业传感器通讯、测试嵌入式设备，还是监控串行协议，本工具都能以直观的界面提供专业级的功能支持。
 
@@ -84,13 +84,16 @@ Uartis 由 [Sourcex](https://github.com/sourcexex) 维护，代码库以 Apache-
 
 只有同时满足「提交在 `main`（生产线）分支上」「`version.json` 有变更」「推送了版本 Tag」三个条件才会编译。详见 [`.github/BRANCHING.md`](.github/BRANCHING.md)。
 
+**Linux**：可在 Linux 上从源码构建（见下文），但暂未发布官方 Linux 二进制。
+
 ### 从源代码构建
 
 #### 前置条件
 
-- **Rust** 1.70+ - [从 rustup.rs 安装](https://rustup.rs/)
-- **Node.js** 18+ - [从 nodejs.org 安装](https://nodejs.org/)
+- **Rust** 1.90+（Tauri 2.12 要求） - [从 rustup.rs 安装](https://rustup.rs/)
+- **Node.js** 20+ - [从 nodejs.org 安装](https://nodejs.org/)
 - **Git** - 用于克隆仓库
+- **Tauri CLI** - 通过 `npx @tauri-apps/cli@2` 按需拉取（无需全局安装 `cargo-tauri`）
 
 #### 构建步骤
 
@@ -105,7 +108,7 @@ npm install
 cd ..
 
 # 构建应用（在 src-tauri/target/release/bundle/ 中生成安装程序）
-cargo tauri build
+npx @tauri-apps/cli@2 build
 ```
 
 编译后的应用程序二进制文件位置：
@@ -126,7 +129,7 @@ npm run dev
 
 ```bash
 # 终端 2：启动 Tauri 开发模式（从项目根目录运行）
-cargo tauri dev
+npx @tauri-apps/cli@2 dev
 ```
 
 开发应用将自动启动，并启用热重载功能。
@@ -253,7 +256,7 @@ cargo tauri dev
 
 | 层级 | 技术 | 版本 |
 |------|------|------|
-| **后端** | Rust | 1.70+ |
+| **后端** | Rust | 1.90+ |
 | **框架** | Tauri | 2.0 |
 | **前端** | React | 18.2 |
 | **语言** | TypeScript | 5.0+ |
@@ -269,17 +272,16 @@ cargo tauri dev
 **Rust 后端** (`src-tauri/Cargo.toml`)：
 - `tauri` - 跨平台框架
 - `serialport` - 串行端口通讯
-- `tokio` - 具有完整功能的异步运行时
-- `serde` - 序列化/反序列化
+- `tokio` - 异步运行时（阻塞任务桥接）
+- `serde` / `serde_json` - 序列化/反序列化
 - `chrono` - 时间戳处理
-- `uuid` - 唯一标识符生成
-- `encoding_rs` - 字符编码支持
-- `rusqlite` - 轻量级数据库（捆绑）
+- `encoding_rs` - 字符编码支持（UTF-8 / GBK）
+- `reqwest` / `futures-util` - GitHub Releases 更新检查与下载
+- `anyhow` / `log` / `env_logger` / `dirs` - 错误处理、日志与日志目录
 
 **React 前端** (`frontend/package.json`)：
 - `@tauri-apps/api` - Tauri IPC 通讯
 - `@tauri-apps/plugin-dialog` - 文件对话框
-- `@tauri-apps/plugin-shell` - Shell 命令
 - `lucide-react` - 现代图标库
 - `react` & `react-dom` - UI 框架
 
@@ -288,10 +290,10 @@ cargo tauri dev
 ```bash
 # 开发服务器（需要两个终端）
 cd frontend && npm run dev          # 终端 1：前端开发服务器
-cargo tauri dev                     # 终端 2：Tauri 热重载
+npx @tauri-apps/cli@2 dev              # 终端 2：Tauri 热重载
 
 # 生产构建
-cargo tauri build                   # 创建安装程序二进制文件
+npx @tauri-apps/cli@2 build            # 创建安装程序二进制文件
 
 # 仅前端
 cd frontend
