@@ -82,6 +82,8 @@ Download the [latest GitHub Release](https://github.com/sourcexex/uartis/release
 | Windows  | `.exe` (NSIS) | Built by GitHub Actions on version tags |
 | macOS (Apple Silicon) | `.dmg` | Built by GitHub Actions on version tags |
 
+> **Signing note:** Windows installers are unsigned, so SmartScreen may warn. macOS builds are signed and notarized when the Apple Developer secrets are configured in CI; otherwise the workflow produces an ad-hoc signed DMG that must be opened via right-click → Open.
+
 Release builds run only when a version tag is pushed **and** that commit is on `main` (the production branch) **and** `version.json` changed. See [`.github/BRANCHING.md`](.github/BRANCHING.md).
 
 **Linux**: the app can be built from source on Linux (see below), but no official Linux binaries are published yet.
