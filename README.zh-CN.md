@@ -82,6 +82,8 @@ Uartis 由 [Sourcex](https://github.com/sourcexex) 维护，代码库以 Apache-
 | Windows | `.exe`（NSIS） | 在版本 Tag 上由 GitHub Actions 构建 |
 | macOS（Apple Silicon） | `.dmg` | 在版本 Tag 上由 GitHub Actions 构建 |
 
+> **签名说明**：Windows 安装包未签名，SmartScreen 可能提示。macOS 包在 CI 配置了 Apple Developer 证书时签名并公证；未配置或证书无效时构建的是 ad-hoc 签名 DMG，需要右键 → 打开才能运行。
+
 只有同时满足「提交在 `main`（生产线）分支上」「`version.json` 有变更」「推送了版本 Tag」三个条件才会编译。详见 [`.github/BRANCHING.md`](.github/BRANCHING.md)。
 
 **Linux**：可在 Linux 上从源码构建（见下文），但暂未发布官方 Linux 二进制。

@@ -374,8 +374,6 @@ const SendPanel: React.FC<SendPanelProps> = ({
   useEffect(() => {
     stopScheduledSending();
     setIsScheduledEnabled(false);
-    // Only mode changes should reset the schedule.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sendMode]);
 
   // Report minimum height changes to parent

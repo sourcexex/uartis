@@ -520,6 +520,10 @@ function App() {
       if (logsInterval !== null) clearInterval(logsInterval);
       clearInterval(portsInterval);
     };
+    // updateStatus/updateLogs are stable callbacks declared below; referencing
+    // them here would hit the temporal dead zone, and including them would
+    // restart every interval on each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadPorts, eventPush]); // 依赖loadPorts函数
 
   const handlePortSelect = useCallback((port: string) => {
