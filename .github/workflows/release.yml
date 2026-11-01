@@ -165,8 +165,9 @@ jobs:
             $Hash = (Get-FileHash $File.FullName -Algorithm SHA256).Hash.ToLower()
             "$Hash  $($File.Name)"
           }
-          $Lines | Set-Content -Path "SHA256SUMS-${{ matrix.sums }}.txt" -Encoding ascii
-          Get-Content "SHA256SUMS-${{ matrix.sums }}.txt"
+          $Path = "SHA256SUMS-${{ matrix.sums }}.txt"
+          [System.IO.File]::WriteAllText($Path, (($Lines -join "`n") + "`n"), [System.Text.Encoding]::ASCII)
+          Get-Content $Path
 
       - name: Generate SHA256SUMS (macOS)
         if: matrix.platform == 'macos-latest'
