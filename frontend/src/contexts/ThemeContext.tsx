@@ -10,18 +10,18 @@ interface ThemeColors {
   bgSurface: string;
   bgInput: string;
   bgHover: string;
-  
+
   // Text colors
   textPrimary: string;
   textSecondary: string;
   textTertiary: string;
   textPlaceholder: string;
-  
+
   // Border colors
   border: string;
   borderLight: string;
   borderDark: string;
-  
+
   // Accent colors (same for both themes)
   accent: string;
   accentHover: string;
@@ -29,7 +29,7 @@ interface ThemeColors {
   danger: string;
   error: string;
   warning: string;
-  
+
   // Component-specific
   buttonSecondaryBg: string;
   buttonSecondaryHover: string;
@@ -44,16 +44,16 @@ const lightTheme: ThemeColors = {
   bgSurface: '#ffffff',
   bgInput: '#ffffff',
   bgHover: 'rgba(0, 0, 0, 0.05)',
-  
+
   textPrimary: '#1d1d1f',
   textSecondary: '#6e6e73',
   textTertiary: '#86868b',
   textPlaceholder: '#aeaeb2',
-  
+
   border: 'rgba(0, 0, 0, 0.1)',
   borderLight: 'rgba(0, 0, 0, 0.05)',
   borderDark: 'rgba(0, 0, 0, 0.2)',
-  
+
   accent: '#0A84FF',
   accentHover: '#0071e3',
   success: '#30D158',
@@ -74,16 +74,16 @@ const darkTheme: ThemeColors = {
   bgSurface: '#333333',
   bgInput: 'rgba(255, 255, 255, 0.1)',
   bgHover: 'rgba(255, 255, 255, 0.1)',
-  
+
   textPrimary: '#ffffff',
   textSecondary: '#a0a0a0',
   textTertiary: '#707070',
   textPlaceholder: '#606060',
-  
+
   border: 'rgba(255, 255, 255, 0.1)',
   borderLight: 'rgba(255, 255, 255, 0.05)',
   borderDark: 'rgba(0, 0, 0, 0.4)',
-  
+
   accent: '#0A84FF',
   accentHover: '#0071e3',
   success: '#30D158',
@@ -132,11 +132,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
   const colors = themeMode === 'light' ? lightTheme : darkTheme;
 
-  return (
-    <ThemeContext.Provider value={{ themeMode, colors, setThemeMode }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ themeMode, colors, setThemeMode }}>{children}</ThemeContext.Provider>;
 };
 
 export const useTheme = (): ThemeContextType => {

@@ -5,15 +5,96 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::State;
 
-mod serial_manager;
 mod bus;
 mod framing;
+mod logger;
+mod serial_manager;
 mod types;
 mod updater;
 
 use serial_manager::SerialManager;
-use types::*;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use types::*;
+
+// ── Hex send parsing (audit B-04, S1-15) ────────────────────────────
+
+/// Hard cap on a single send, so a hostile or broken paste cannot pin the
+/// writer for minutes.
+const MAX_SEND_BYTES: usize = 1024 * 1024;
+
+/// Parse user-entered hex text into bytes.
+///
+/// Pure and panic-free: works on raw ASCII bytes, tolerates spaces, tabs,
+/// CR/LF and commas as separators, accepts an optional `0x` prefix where a
+/// byte starts, and rejects everything else with a descriptive error. The old
+/// implementation sliced `&str` by byte offset and could panic on inputs
+/// containing multi-byte characters (`byte index is not a char boundary`).
+pub(crate) fn parse_hex_input(input: &str) -> Result<Vec<u8>, String> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() / 2 + 1);
+    let mut high: Option<u8> = None;
+
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte.is_ascii_whitespace() || byte == b',' {
+            index += 1;
+            continue;
+        }
+        // Optional `0x`/`0X` prefix, only where a new byte starts.
+        if byte == b'0' && index + 1 < bytes.len() && matches!(bytes[index + 1], b'x' | b'X') {
+            if high.is_some() {
+                return Err(format!(
+                    "Invalid hex input: '0x' prefix at byte {} splits a byte in half",
+                    index
+                ));
+            }
+            index += 2;
+            continue;
+        }
+        let value = match byte {
+            b'0'..=b'9' => byte - b'0',
+            b'a'..=b'f' => byte - b'a' + 10,
+            b'A'..=b'F' => byte - b'A' + 10,
+            _ => {
+                return Err(format!(
+                    "Invalid hex input: {} at byte {} is not a hex digit",
+                    describe_byte(byte),
+                    index
+                ));
+            }
+        };
+        match high.take() {
+            None => high = Some(value),
+            Some(high_nibble) => {
+                out.push((high_nibble << 4) | value);
+                if out.len() > MAX_SEND_BYTES {
+                    return Err(format!(
+                        "Hex input too large: a single send is limited to {} bytes",
+                        MAX_SEND_BYTES
+                    ));
+                }
+            }
+        }
+        index += 1;
+    }
+
+    if high.is_some() {
+        return Err(
+            "Invalid hex input: odd number of hex digits (each byte needs two)".to_string(),
+        );
+    }
+    Ok(out)
+}
+
+/// Render one input byte for an error message without assuming UTF-8.
+fn describe_byte(byte: u8) -> String {
+    if byte.is_ascii_graphic() {
+        format!("'{}'", byte as char)
+    } else {
+        format!("byte 0x{byte:02X}")
+    }
+}
 
 // ── RFC #3 Step 4: event push bridge ─────────────────────────────────
 /// Wire DTO for `serial://frames`: the hot path carries no raw bytes
@@ -93,6 +174,10 @@ struct AppState {
     serial_manager: Mutex<SerialManager>,
     sessions: Mutex<HashMap<String, SerialConfig>>,
     update_downloading: AtomicBool,
+    /// Path returned by the last successful `download_update`. The installer
+    /// launcher only accepts this path, so a compromised webview cannot hand
+    /// an arbitrary executable to the launcher (audit S-02).
+    downloaded_installer: Mutex<Option<std::path::PathBuf>>,
 }
 
 impl Default for AppState {
@@ -101,6 +186,7 @@ impl Default for AppState {
             serial_manager: Mutex::new(SerialManager::new()),
             sessions: Mutex::new(HashMap::new()),
             update_downloading: AtomicBool::new(false),
+            downloaded_installer: Mutex::new(None),
         }
     }
 }
@@ -108,8 +194,7 @@ impl Default for AppState {
 // Tauri commands
 #[tauri::command]
 async fn list_serial_ports() -> Result<Vec<SerialPortInfo>, String> {
-    SerialManager::list_available_ports()
-        .map_err(|e| e.to_string())
+    SerialManager::list_available_ports().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -119,7 +204,8 @@ async fn connect_to_port(
     config: SerialConfig,
 ) -> Result<(), String> {
     let mut manager = state.serial_manager.lock().unwrap();
-    manager.connect(&port_name, config)
+    manager
+        .connect(&port_name, config)
         .map_err(|e| e.to_string())
 }
 
@@ -164,27 +250,18 @@ async fn send_data(
                     }
                 }
             }
-            DataFormat::Hex => {
-                let cleaned = data.replace(" ", "").replace("\n", "");
-                if cleaned.len() % 2 != 0 {
-                    return Err("Hex string must have even number of characters".to_string());
-                }
-
-                let mut bytes = Vec::new();
-                for i in (0..cleaned.len()).step_by(2) {
-                    match u8::from_str_radix(&cleaned[i..i+2], 16) {
-                        Ok(byte) => bytes.push(byte),
-                        Err(_) => return Err("Invalid hex characters".to_string()),
-                    }
-                }
-                Ok(bytes)
-            }
+            DataFormat::Hex => parse_hex_input(&data),
         }
-    }).await.map_err(|e| e.to_string())??;
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    if bytes.is_empty() {
+        return Err("No data to send".to_string());
+    }
 
     let mut manager = state.serial_manager.lock().unwrap();
-    manager.send_data(bytes)
-        .map_err(|e| e.to_string())
+    manager.send_data(bytes).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -222,7 +299,8 @@ async fn export_logs(
     timezone_offset_minutes: Option<i32>,
 ) -> Result<(), String> {
     let manager = state.serial_manager.lock().unwrap();
-    manager.export_logs(&file_path, format, timezone_offset_minutes.unwrap_or(0))
+    manager
+        .export_logs(&file_path, format, timezone_offset_minutes.unwrap_or(0))
         .map_err(|e| e.to_string())
 }
 
@@ -238,12 +316,10 @@ async fn save_session(
 }
 
 #[tauri::command]
-async fn load_session(
-    state: State<'_, AppState>,
-    name: String,
-) -> Result<SerialConfig, String> {
+async fn load_session(state: State<'_, AppState>, name: String) -> Result<SerialConfig, String> {
     let sessions = state.sessions.lock().unwrap();
-    sessions.get(&name)
+    sessions
+        .get(&name)
         .cloned()
         .ok_or_else(|| "Session not found".to_string())
 }
@@ -278,7 +354,9 @@ async fn set_frame_segmentation(
 }
 
 #[tauri::command]
-async fn get_frame_segmentation(state: State<'_, AppState>) -> Result<FrameSegmentationConfig, String> {
+async fn get_frame_segmentation(
+    state: State<'_, AppState>,
+) -> Result<FrameSegmentationConfig, String> {
     let manager = state.serial_manager.lock().unwrap();
     Ok(manager.get_frame_segmentation_config())
 }
@@ -299,7 +377,10 @@ async fn get_log_directory(state: State<'_, AppState>) -> Result<String, String>
 }
 
 #[tauri::command]
-async fn set_timezone_offset(state: State<'_, AppState>, offset_minutes: i32) -> Result<(), String> {
+async fn set_timezone_offset(
+    state: State<'_, AppState>,
+    offset_minutes: i32,
+) -> Result<(), String> {
     let manager = state.serial_manager.lock().unwrap();
     manager.set_timezone_offset(offset_minutes);
     Ok(())
@@ -355,8 +436,7 @@ async fn encode_text(text: String, encoding: TextEncoding) -> Result<Vec<u8>, St
 async fn decode_bytes(bytes: Vec<u8>, encoding: TextEncoding) -> Result<String, String> {
     match encoding {
         TextEncoding::Utf8 => {
-            String::from_utf8(bytes)
-                .map_err(|e| format!("Invalid UTF-8 sequence: {}", e))
+            String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8 sequence: {}", e))
         }
         TextEncoding::Gbk => {
             let (decoded, _, had_errors) = encoding_rs::GBK.decode(&bytes);
@@ -371,21 +451,30 @@ async fn decode_bytes(bytes: Vec<u8>, encoding: TextEncoding) -> Result<String, 
 // Display settings commands
 
 #[tauri::command]
-async fn set_display_format(state: State<'_, AppState>, format: ReceiveDisplayFormat) -> Result<(), String> {
+async fn set_display_format(
+    state: State<'_, AppState>,
+    format: ReceiveDisplayFormat,
+) -> Result<(), String> {
     let manager = state.serial_manager.lock().unwrap();
     manager.set_display_format(format);
     Ok(())
 }
 
 #[tauri::command]
-async fn set_text_encoding_display(state: State<'_, AppState>, encoding: TextEncoding) -> Result<(), String> {
+async fn set_text_encoding_display(
+    state: State<'_, AppState>,
+    encoding: TextEncoding,
+) -> Result<(), String> {
     let manager = state.serial_manager.lock().unwrap();
     manager.set_text_encoding(encoding);
     Ok(())
 }
 
 #[tauri::command]
-async fn set_special_char_config(state: State<'_, AppState>, config: SpecialCharConfig) -> Result<(), String> {
+async fn set_special_char_config(
+    state: State<'_, AppState>,
+    config: SpecialCharConfig,
+) -> Result<(), String> {
     let manager = state.serial_manager.lock().unwrap();
     manager.set_special_char_config(config);
     Ok(())
@@ -402,6 +491,64 @@ async fn set_show_timestamps(state: State<'_, AppState>, show: bool) -> Result<(
 async fn get_display_settings(state: State<'_, AppState>) -> Result<DisplaySettings, String> {
     let manager = state.serial_manager.lock().unwrap();
     Ok(manager.get_display_settings())
+}
+
+// Modem control / break commands (S1-10)
+
+#[tauri::command]
+async fn set_dtr(state: State<'_, AppState>, level: bool) -> Result<(), String> {
+    let mut manager = state
+        .serial_manager
+        .lock()
+        .map_err(|_| "Serial manager lock poisoned".to_string())?;
+    manager.set_dtr(level).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_rts(state: State<'_, AppState>, level: bool) -> Result<(), String> {
+    let mut manager = state
+        .serial_manager
+        .lock()
+        .map_err(|_| "Serial manager lock poisoned".to_string())?;
+    manager.set_rts(level).map_err(|e| e.to_string())
+}
+
+/// Assert BREAK for `duration_ms` (clamped 1..=5000).
+///
+/// The manager lock is NOT held while sleeping: a long break must not freeze
+/// the other commands. If the port goes away during the sleep, closing it
+/// already cleared the BREAK line, so the clear failure is only logged.
+#[tauri::command]
+async fn send_break(state: State<'_, AppState>, duration_ms: u64) -> Result<(), String> {
+    let duration = serial_manager::clamp_break_ms(duration_ms);
+
+    {
+        let mut manager = state
+            .serial_manager
+            .lock()
+            .map_err(|_| "Serial manager lock poisoned".to_string())?;
+        manager.set_break_level(true).map_err(|e| e.to_string())?;
+    }
+
+    tokio::time::sleep(std::time::Duration::from_millis(duration)).await;
+
+    let mut manager = state
+        .serial_manager
+        .lock()
+        .map_err(|_| "Serial manager lock poisoned".to_string())?;
+    if let Err(e) = manager.set_break_level(false) {
+        log::warn!("Failed to clear break: {}", e);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_pin_states(state: State<'_, AppState>) -> Result<PinStates, String> {
+    let mut manager = state
+        .serial_manager
+        .lock()
+        .map_err(|_| "Serial manager lock poisoned".to_string())?;
+    manager.get_pin_states().map_err(|e| e.to_string())
 }
 
 // Update checker commands
@@ -426,13 +573,46 @@ async fn download_update(
 
     let result = updater::download_update(&app_handle, &download_url, &asset_name).await;
 
-    state.update_downloading.store(false, AtomicOrdering::SeqCst);
+    state
+        .update_downloading
+        .store(false, AtomicOrdering::SeqCst);
 
-    result.map(|path| path.to_string_lossy().to_string())
+    match result {
+        Ok(path) => {
+            if let Ok(mut slot) = state.downloaded_installer.lock() {
+                *slot = Some(path.clone());
+            }
+            Ok(path.to_string_lossy().to_string())
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[tauri::command]
-async fn launch_installer_and_exit(installer_path: String) -> Result<(), String> {
+async fn launch_installer_and_exit(
+    state: State<'_, AppState>,
+    installer_path: String,
+) -> Result<(), String> {
+    let requested = std::path::PathBuf::from(&installer_path);
+    let allowed = state
+        .downloaded_installer
+        .lock()
+        .map(|slot| slot.clone())
+        .unwrap_or(None)
+        .ok_or_else(|| "No update has been downloaded in this session".to_string())?;
+
+    let matches = match (requested.canonicalize(), allowed.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => requested == allowed,
+    };
+    if !matches {
+        return Err(
+            "Refusing to launch an installer that was not downloaded by this app".to_string(),
+        );
+    }
+    if !allowed.is_file() {
+        return Err("Downloaded installer is missing".to_string());
+    }
     updater::launch_installer_and_exit(&installer_path)
 }
 
@@ -442,12 +622,14 @@ fn open_url(url: String) -> Result<(), String> {
 }
 
 fn main() {
-    env_logger::init();
-
     tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // Release builds have no visible stderr; keep diagnostics on disk.
+            if let Err(error) = logger::init(app.handle()) {
+                eprintln!("failed to initialise file logger: {error}");
+            }
             spawn_frame_pump(app);
             Ok(())
         })
@@ -483,6 +665,10 @@ fn main() {
             set_special_char_config,
             set_show_timestamps,
             get_display_settings,
+            set_dtr,
+            set_rts,
+            send_break,
+            get_pin_states,
             check_for_updates,
             download_update,
             launch_installer_and_exit,
@@ -490,4 +676,48 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_parser_accepts_common_formats() {
+        assert_eq!(
+            parse_hex_input("48 65 6C 6C 6F").unwrap(),
+            b"Hello".to_vec()
+        );
+        assert_eq!(parse_hex_input("0d0a").unwrap(), vec![0x0D, 0x0A]);
+        assert_eq!(parse_hex_input("0D, 0A").unwrap(), vec![0x0D, 0x0A]);
+        assert_eq!(parse_hex_input("0x0D 0x0A").unwrap(), vec![0x0D, 0x0A]);
+        assert_eq!(parse_hex_input("\t0D\r\n0A\n").unwrap(), vec![0x0D, 0x0A]);
+        assert!(parse_hex_input("").unwrap().is_empty());
+        assert!(parse_hex_input("   \r\n\t").unwrap().is_empty());
+    }
+
+    #[test]
+    fn hex_parser_reports_errors_without_panicking() {
+        let odd = parse_hex_input("0D0").unwrap_err();
+        assert!(odd.contains("odd number"), "{odd}");
+
+        let invalid = parse_hex_input("0G").unwrap_err();
+        assert!(invalid.contains("not a hex digit"), "{invalid}");
+
+        // Multi-byte UTF-8 used to panic on the old byte-slicing parser.
+        let multibyte = parse_hex_input("0€").unwrap_err();
+        assert!(multibyte.contains("not a hex digit"), "{multibyte}");
+    }
+
+    #[test]
+    fn hex_parser_rejects_oversized_payloads() {
+        let oversized = "00".repeat(MAX_SEND_BYTES + 1);
+        assert!(parse_hex_input(&oversized).is_err());
+    }
+
+    #[test]
+    fn hex_parser_accepts_exactly_the_size_limit() {
+        let at_limit = "00".repeat(MAX_SEND_BYTES);
+        assert_eq!(parse_hex_input(&at_limit).unwrap().len(), MAX_SEND_BYTES);
+    }
 }

@@ -50,24 +50,24 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
 
   const getConfigSummary = () => {
     const dataBitsMap = {
-      'Five': '5',
-      'Six': '6',
-      'Seven': '7',
-      'Eight': '8',
+      Five: '5',
+      Six: '6',
+      Seven: '7',
+      Eight: '8',
     };
 
     const parityMap = {
-      'None': 'N',
-      'Odd': 'O',
-      'Even': 'E',
-      'Mark': 'M',
-      'Space': 'S',
+      None: 'N',
+      Odd: 'O',
+      Even: 'E',
+      Mark: 'M',
+      Space: 'S',
     };
 
     const stopBitsMap = {
-      'One': '1',
-      'OnePointFive': '1.5',
-      'Two': '2',
+      One: '1',
+      OnePointFive: '1.5',
+      Two: '2',
     };
 
     return `${config.baud_rate} ${dataBitsMap[config.data_bits]}${parityMap[config.parity]}${stopBitsMap[config.stop_bits]}`;
@@ -79,7 +79,7 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
       style={{
         backgroundColor: colors.bgSidebar,
         borderTop: `1px solid ${colors.borderDark}`,
-        color: colors.textTertiary
+        color: colors.textTertiary,
       }}
     >
       {/* Left side - Connection status */}
@@ -107,4 +107,4 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
   );
 };
 
-export default StatusBar;
+export default React.memo(StatusBar);

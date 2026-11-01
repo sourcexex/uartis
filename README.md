@@ -8,10 +8,10 @@
 
 [![Release](https://img.shields.io/github/v/release/sourcexex/uartis)](https://github.com/sourcexex/uartis/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.90+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/tauri-2.0-purple.svg)](https://tauri.app/)
 [![React](https://img.shields.io/badge/react-18.2-61dafb.svg)](https://reactjs.org/)
-[![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node.js-20+-green.svg)](https://nodejs.org/)
 
 [✨ Features](#-features) | [📦 Installation](#-installation) | [🚀 Quick Start](#-quick-start) | [📋 Usage Guide](#-usage-guide) | [🔧 Development](#-development) | [❤️ Contributing](#%EF%B8%8F-contributing)
 
@@ -23,7 +23,7 @@
 
 ## 📖 About
 
-**Uartis** is a professional-grade serial communication debugging tool designed for embedded systems engineers, IoT developers, and hardware enthusiasts. Combining the power of **Rust** with the elegance of modern **React** UI, it provides a seamless cross-platform experience for Windows, macOS, and Linux.
+**Uartis** is a professional-grade serial communication debugging tool designed for embedded systems engineers, IoT developers, and hardware enthusiasts. Combining the power of **Rust** with the elegance of modern **React** UI, it provides a seamless cross-platform experience for Windows and macOS; Linux is supported as a build-from-source target for now (no official Linux binaries are published yet).
 
 Whether you're debugging Arduino projects, communicating with industrial sensors, testing embedded devices, or monitoring serial protocols, this tool delivers professional features with an intuitive interface.
 
@@ -84,13 +84,16 @@ Download the [latest GitHub Release](https://github.com/sourcexex/uartis/release
 
 Release builds run only when a version tag is pushed **and** that commit is on `main` (the production branch) **and** `version.json` changed. See [`.github/BRANCHING.md`](.github/BRANCHING.md).
 
+**Linux**: the app can be built from source on Linux (see below), but no official Linux binaries are published yet.
+
 ### Build from Source
 
 #### Prerequisites
 
-- **Rust** 1.70+ - [Install from rustup.rs](https://rustup.rs/)
-- **Node.js** 18+ - [Install from nodejs.org](https://nodejs.org/)
+- **Rust** 1.90+ (required by Tauri 2.12) - [Install from rustup.rs](https://rustup.rs/)
+- **Node.js** 20+ - [Install from nodejs.org](https://nodejs.org/)
 - **Git** - For cloning the repository
+- **Tauri CLI** - fetched on demand via `npx @tauri-apps/cli@2` (no global `cargo-tauri` install needed)
 
 #### Build Steps
 
@@ -105,7 +108,7 @@ npm install
 cd ..
 
 # Build the application (creates installers in src-tauri/target/release/bundle/)
-cargo tauri build
+npx @tauri-apps/cli@2 build
 ```
 
 The compiled application binaries will be located in:
@@ -126,7 +129,7 @@ npm run dev
 
 ```bash
 # Terminal 2: Start Tauri development mode (from project root)
-cargo tauri dev
+npx @tauri-apps/cli@2 dev
 ```
 
 The development app will launch automatically with hot-reload enabled.
@@ -253,7 +256,7 @@ Create command lists for rapid execution:
 
 | Layer | Technology | Version |
 |-------|-----------|----------|
-| **Backend** | Rust | 1.70+ |
+| **Backend** | Rust | 1.90+ |
 | **Framework** | Tauri | 2.0 |
 | **Frontend** | React | 18.2 |
 | **Language** | TypeScript | 5.0+ |
@@ -269,17 +272,16 @@ Create command lists for rapid execution:
 **Rust Backend** (`src-tauri/Cargo.toml`):
 - `tauri` - Cross-platform framework
 - `serialport` - Serial port communication
-- `tokio` - Async runtime with full features
-- `serde` - Serialization/deserialization
+- `tokio` - Async runtime (blocking task bridge)
+- `serde` / `serde_json` - Serialization/deserialization
 - `chrono` - Timestamp handling
-- `uuid` - Unique identifier generation
-- `encoding_rs` - Character encoding support
-- `rusqlite` - Lightweight database (bundled)
+- `encoding_rs` - Character encoding support (UTF-8 / GBK)
+- `reqwest` / `futures-util` - GitHub Releases update check and download
+- `anyhow` / `log` / `env_logger` / `dirs` - Error handling, logging, log directory
 
 **React Frontend** (`frontend/package.json`):
 - `@tauri-apps/api` - Tauri IPC communication
 - `@tauri-apps/plugin-dialog` - File dialogs
-- `@tauri-apps/plugin-shell` - Shell commands
 - `lucide-react` - Modern icon library
 - `react` & `react-dom` - UI framework
 
@@ -288,10 +290,10 @@ Create command lists for rapid execution:
 ```bash
 # Development server (requires two terminals)
 cd frontend && npm run dev          # Terminal 1: Frontend dev server
-cargo run tauri dev                     # Terminal 2: Tauri with live reload
+npx @tauri-apps/cli@2 dev              # Terminal 2: Tauri with live reload
 
 # Production build
-cargo tauri build                   # Creates installer binaries
+npx @tauri-apps/cli@2 build            # Creates installer binaries
 
 # Frontend only
 cd frontend

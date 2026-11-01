@@ -2,7 +2,8 @@
   "app": {
     "title": "Uartis",
     "subtitle": "串口调试助手",
-    "connectionLost": "连接意外断开：{error}"
+    "connectionLost": "连接意外断开：{error}",
+    "connectFailed": "连接失败：{error}"
   },
   "sidebar": {
     "expandSidebar": "展开侧边栏",
@@ -23,7 +24,12 @@
     "manufacturer": "制造商",
     "product": "产品",
     "serial": "序列号",
-    "unknownDevice": "未知设备"
+    "unknownDevice": "未知设备",
+    "serialControl": "线路控制",
+    "breakLabel": "Break",
+    "breakTitle": "发送 BREAK（250 ms）",
+    "disconnectTitle": "断开串口连接？",
+    "disconnectDescription": "文本/原始记录与定时发送将停止，日志历史会保留。"
   },
   "configPanel": {
     "communication": "通信参数",
@@ -51,6 +57,11 @@
     "export": "导出",
     "clear": "清空",
     "exportLogs": "导出日志",
+    "exportTxt": "导出为 TXT",
+    "exportCsv": "导出为 CSV",
+    "exportJson": "导出为 JSON",
+    "exportSuccess": "日志已导出到 {path}",
+    "exportFailed": "导出日志失败：{error}",
     "clearLogs": "清空日志",
     "search": "搜索",
     "searchPlaceholder": "搜索日志...",
@@ -78,7 +89,14 @@
     "rx": "接收",
     "total": "总计",
     "bytes": "字节",
-    "framesDropped": "⋯ 丢失 {n} 帧（通道过载） ⋯"
+    "framesDropped": "⋯ 丢失 {n} 帧（通道过载） ⋯",
+    "newSession": "新会话",
+    "clearTitle": "清空全部日志？",
+    "clearDescription": "当前日志缓冲将被清空，此操作不可撤销。",
+    "timestampMode": "时间格式",
+    "timestampAbsolute": "绝对",
+    "timestampRelative": "相对",
+    "timestampDelta": "间隔"
   },
   "sendPanel": {
     "payload": "发送数据",
@@ -92,6 +110,9 @@
     "startScheduled": "开始定时发送",
     "intervalTitle": "发送间隔（毫秒）",
     "rateExceeded": "发送速率约 {rate}，超过线路容量 {capacity}，将持续超时",
+    "sendFailed": "发送失败：{error}",
+    "sendHexOddLength": "十六进制字符数必须为偶数",
+    "sendHexInvalid": "包含无效的十六进制字符",
     "characters": "字符数",
     "bytes": "字节数",
     "quickInsert": "快速插入",
@@ -112,7 +133,8 @@
     "crLf": "回车+换行",
     "nullByte": "空字节",
     "escape": "转义符",
-    "spaceChar": "空格字符"
+    "spaceChar": "空格字符",
+    "lineEnding": "行尾"
   },
   "statusBar": {
     "connectedTo": "已连接到",
@@ -137,7 +159,7 @@
     "defaultLogPathDesc": "日志自动保存位置",
     "browseFolderTitle": "浏览文件夹",
     "maxLogLines": "最大日志行数",
-    "maxLogLinesDesc": "显示的日志条目数量 (1000-100000)",
+    "maxLogLinesDesc": "显示的日志条目数量 (100-10000)",
     "textEncoding": "文本编码",
     "textEncodingDesc": "发送和接收文本数据的编码",
     "convertSpecialChars": "转换特殊字符",
@@ -189,7 +211,9 @@
   },
   "common": {
     "text": "文本",
-    "hex": "十六进制"
+    "hex": "十六进制",
+    "cancel": "取消",
+    "confirm": "确认"
   },
   "quickCommand": {
     "name": "名称",
@@ -211,6 +235,8 @@
     "loopSend": "循环发送",
     "loopSendTitle": "循环发送已选指令",
     "listSend": "发送选中",
-    "endingNone": "无"
+    "endingNone": "无",
+    "deleteListTitle": "删除这个命令列表？",
+    "deleteListDescription": "列表中的所有命令都会被删除。"
   }
 }

@@ -1,7 +1,15 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Trash2, Download, Terminal, ChevronDown, Circle, Search, X, ChevronUp } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { LogEntry, TextEncoding, SpecialCharConfig, RecordingStatus, ReceiveDisplayFormat, SpecialCharConfigBackend } from '../types';
+import {
+  LogEntry,
+  TextEncoding,
+  SpecialCharConfig,
+  RecordingStatus,
+  ReceiveDisplayFormat,
+  SpecialCharConfigBackend,
+  ExportFormat,
+} from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 import { loadTimezone, formatTimestampWithTimezone } from '../utils/timezone';
@@ -14,6 +22,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ConfirmDialog } from './ConfirmDialog';
 
 const STORAGE_KEY_RECEIVE_FORMAT = 'uartis_receiveFormat';
 const STORAGE_KEY_SHOW_TIMESTAMPS = 'uartis_showTimestamps';
@@ -23,6 +32,7 @@ const STORAGE_KEY_SAVE_TEXT_ENABLED = 'uartis_saveTextEnabled';
 const STORAGE_KEY_SAVE_RAW_ENABLED = 'uartis_saveRawEnabled';
 const STORAGE_KEY_LOG_PATH = 'uartis_logPath';
 const STORAGE_KEY_SHOW_LINE_NUMBERS = 'uartis_showLineNumbers';
+const STORAGE_KEY_TIMESTAMP_MODE = 'uartis_timestampMode';
 
 const SCROLL_BOTTOM_THRESHOLD = 50;
 
@@ -39,29 +49,42 @@ const DEFAULT_SPECIAL_CHAR_CONFIG: SpecialCharConfig = {
 interface LogViewerProps {
   logs: LogEntry[];
   onClear: () => void;
-  onExport: () => void;
+  onExport: (format: ExportFormat) => void;
+  /** Reload the snapshot after a display-setting change (FE-5 / S1-05). */
+  onResync?: () => void | Promise<void>;
   isConnected: boolean;
 }
 
-const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnected }) => {
+const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync, isConnected }) => {
   const { colors } = useTheme();
   const { t } = useTranslation();
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
-  const previousLogsLengthRef = useRef(logs.length);
+  /** Identity of the last rendered entry — changes even when the capped
+   *  buffer keeps `logs.length` constant after a new frame arrives (S1-02). */
+  const previousLastKeyRef = useRef<string | null>(null);
+  const previousAutoScrollRef = useRef(autoScrollEnabled);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const wasConnectedRef = useRef(isConnected);
 
   const [receiveFormat, setReceiveFormat] = useState<ReceiveDisplayFormat>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_RECEIVE_FORMAT);
-    return (saved === 'Hex' || saved === 'Txt') ? saved : 'Txt';
+    return saved === 'Hex' || saved === 'Txt' ? saved : 'Txt';
   });
   const [showTimestamps, setShowTimestamps] = useState<boolean>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_SHOW_TIMESTAMPS);
     return saved === null ? true : saved === 'true';
   });
+  type TimestampMode = 'absolute' | 'relative' | 'delta';
+  const [timestampMode, setTimestampMode] = useState<TimestampMode>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_TIMESTAMP_MODE);
+    return saved === 'relative' || saved === 'delta' ? saved : 'absolute';
+  });
   const [textEncoding, setTextEncoding] = useState<TextEncoding>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_TEXT_ENCODING);
-    return (saved === 'utf-8' || saved === 'gbk') ? saved : 'utf-8';
+    return saved === 'utf-8' || saved === 'gbk' ? saved : 'utf-8';
   });
   const [specialCharConfig, setSpecialCharConfig] = useState<SpecialCharConfig>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_SPECIAL_CHAR_CONFIG);
@@ -110,6 +133,10 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
   }, [showTimestamps]);
 
   useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_TIMESTAMP_MODE, timestampMode);
+  }, [timestampMode]);
+
+  useEffect(() => {
     const handleStorageChange = () => {
       const savedEncoding = localStorage.getItem(STORAGE_KEY_TEXT_ENCODING);
       if (savedEncoding === 'utf-8' || savedEncoding === 'gbk') {
@@ -142,60 +169,106 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     convert_spaces: config.convertSpaces,
   });
 
+  const prevReceiveFormatRef = useRef(receiveFormat);
+  const prevTextEncodingRef = useRef(textEncoding);
+  const prevSpecialCharRef = useRef(specialCharConfig);
+  const prevShowTimestampsRef = useRef(showTimestamps);
+
   useEffect(() => {
+    const changed = prevReceiveFormatRef.current !== receiveFormat;
+    prevReceiveFormatRef.current = receiveFormat;
     const syncDisplaySettings = async () => {
       try {
         await invoke('set_display_format', { format: receiveFormat });
+        // The backend re-renders buffered entries with the new format; reload
+        // the snapshot so historical rows change too, not just new frames.
+        if (changed) await onResync?.();
       } catch (error) {
         console.error('Error syncing display format:', error);
       }
     };
-    syncDisplaySettings();
-  }, [receiveFormat]);
+    void syncDisplaySettings();
+  }, [receiveFormat, onResync]);
 
   useEffect(() => {
+    const changed = prevTextEncodingRef.current !== textEncoding;
+    prevTextEncodingRef.current = textEncoding;
     const syncTextEncoding = async () => {
       try {
         await invoke('set_text_encoding_display', { encoding: textEncoding });
+        if (changed) await onResync?.();
       } catch (error) {
         console.error('Error syncing text encoding:', error);
       }
     };
-    syncTextEncoding();
-  }, [textEncoding]);
+    void syncTextEncoding();
+  }, [textEncoding, onResync]);
 
   useEffect(() => {
+    const changed = prevSpecialCharRef.current !== specialCharConfig;
+    prevSpecialCharRef.current = specialCharConfig;
     const syncSpecialCharConfig = async () => {
       try {
         await invoke('set_special_char_config', { config: toBackendSpecialCharConfig(specialCharConfig) });
+        if (changed) await onResync?.();
       } catch (error) {
         console.error('Error syncing special char config:', error);
       }
     };
-    syncSpecialCharConfig();
-  }, [specialCharConfig]);
+    void syncSpecialCharConfig();
+  }, [specialCharConfig, onResync]);
 
   useEffect(() => {
+    const changed = prevShowTimestampsRef.current !== showTimestamps;
+    prevShowTimestampsRef.current = showTimestamps;
     const syncShowTimestamps = async () => {
       try {
         await invoke('set_show_timestamps', { show: showTimestamps });
+        if (changed) await onResync?.();
       } catch (error) {
         console.error('Error syncing show timestamps:', error);
       }
     };
-    syncShowTimestamps();
-  }, [showTimestamps]);
+    void syncShowTimestamps();
+  }, [showTimestamps, onResync]);
 
   useEffect(() => {
-    const currentLogsLength = logs.length;
-    const hasNewLogs = currentLogsLength > previousLogsLengthRef.current;
+    // Detect *new data*, not "array got longer": once the capped buffer is
+    // full the length stays constant while frames keep arriving, so the old
+    // length-based check silently stopped auto-scrolling (S1-02).
+    const lastEntry = logs.length > 0 ? logs[logs.length - 1] : null;
+    const lastKey = lastEntry
+      ? (lastEntry.gap_key ?? `${lastEntry.session ?? 'legacy'}-${lastEntry.seq ?? lastEntry.timestamp}`)
+      : null;
+    const hasNewEntry = lastKey !== previousLastKeyRef.current;
+    const autoScrollJustEnabled = autoScrollEnabled && !previousAutoScrollRef.current;
 
-    if (autoScrollEnabled && hasNewLogs && logContainerRef.current) {
+    if (autoScrollEnabled && (hasNewEntry || autoScrollJustEnabled) && logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
 
-    previousLogsLengthRef.current = currentLogsLength;
+    previousLastKeyRef.current = lastKey;
+    previousAutoScrollRef.current = autoScrollEnabled;
   }, [logs, autoScrollEnabled]);
+
+  // Close the export format menu on outside click / Escape.
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExportMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [exportMenuOpen]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SAVE_TEXT_ENABLED, String(saveTextEnabled));
@@ -209,12 +282,15 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     localStorage.setItem(STORAGE_KEY_SHOW_LINE_NUMBERS, String(showLineNumbers));
   }, [showLineNumbers]);
 
-  const handleWheel = useCallback((e: WheelEvent) => {
-    if (!logContainerRef.current) return;
-    if (e.deltaY < 0 && autoScrollEnabled) {
-      setAutoScrollEnabled(false);
-    }
-  }, [autoScrollEnabled]);
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      if (!logContainerRef.current) return;
+      if (e.deltaY < 0 && autoScrollEnabled) {
+        setAutoScrollEnabled(false);
+      }
+    },
+    [autoScrollEnabled]
+  );
 
   const handleScroll = useCallback(() => {
     if (!logContainerRef.current) return;
@@ -327,8 +403,31 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     return formatTimestampWithTimezone(timestamp, loadTimezone());
   };
 
+  const formatOffset = (offsetMs: number) => {
+    if (Math.abs(offsetMs) >= 1000) {
+      return `+${(offsetMs / 1000).toFixed(3)}s`;
+    }
+    return `+${Math.round(offsetMs)}ms`;
+  };
+
+  /** Absolute / since first row / since previous row (S1-16). */
+  const renderTimestamp = (timestamp: string, index: number) => {
+    if (timestampMode === 'absolute') {
+      const entry = logs[index];
+      return entry?.timestamp_formatted ?? formatTimestamp(timestamp);
+    }
+    const currentMs = new Date(timestamp).getTime();
+    if (timestampMode === 'relative') {
+      const base = logs.length > 0 ? new Date(logs[0].timestamp).getTime() : currentMs;
+      return formatOffset(currentMs - base);
+    }
+    if (index <= 0) return '+0ms';
+    const previous = new Date(logs[index - 1].timestamp).getTime();
+    return formatOffset(currentMs - previous);
+  };
+
   const formatDataAsHex = (data: number[]) => {
-    return data.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    return data.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
   };
 
   const formatDataAsText = (data: number[]) => {
@@ -342,6 +441,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
         if (specialCharConfig.convertCR) text = text.replace(/\r/g, '␍');
         if (specialCharConfig.convertTab) text = text.replace(/\t/g, '␉');
         if (specialCharConfig.convertNull) text = text.replace(/\0/g, '␀');
+        // eslint-disable-next-line no-control-regex -- ESC is the control char being visualized
         if (specialCharConfig.convertEsc) text = text.replace(/\x1B/g, '␛');
         if (specialCharConfig.convertSpaces) {
           text = text.replace(/\x20+$/gm, (spaces) => '␣'.repeat(spaces.length));
@@ -365,6 +465,8 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     logIndex: number;
     startPos: number;
     endPos: number;
+    /** Index of this match in the global (chronological) match list. */
+    globalIndex: number;
   }
 
   const searchMatches = useMemo((): SearchMatch[] => {
@@ -375,12 +477,35 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
       const text = (log.display_text ?? formatData(log.data)).toLowerCase();
       let pos = 0;
       while ((pos = text.indexOf(query, pos)) !== -1) {
-        matches.push({ logIndex, startPos: pos, endPos: pos + query.length });
+        matches.push({
+          logIndex,
+          startPos: pos,
+          endPos: pos + query.length,
+          globalIndex: matches.length,
+        });
         pos += 1;
       }
     });
     return matches;
   }, [searchQuery, logs]);
+
+  /**
+   * Matches grouped by log row. Building this once per search keeps rendering
+   * O(matches in the row) instead of rescanning every previous log for every
+   * rendered row (the previous implementation was O(n²) per keystroke).
+   */
+  const matchesByLog = useMemo((): Map<number, SearchMatch[]> => {
+    const grouped = new Map<number, SearchMatch[]>();
+    for (const match of searchMatches) {
+      const list = grouped.get(match.logIndex);
+      if (list) {
+        list.push(match);
+      } else {
+        grouped.set(match.logIndex, [match]);
+      }
+    }
+    return grouped;
+  }, [searchMatches]);
 
   useEffect(() => {
     if (searchMatches.length > 0) {
@@ -392,12 +517,12 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
 
   const goToNextMatch = useCallback(() => {
     if (totalMatches === 0) return;
-    setCurrentMatchIndex(prev => (prev + 1) % totalMatches);
+    setCurrentMatchIndex((prev) => (prev + 1) % totalMatches);
   }, [totalMatches]);
 
   const goToPrevMatch = useCallback(() => {
     if (totalMatches === 0) return;
-    setCurrentMatchIndex(prev => (prev - 1 + totalMatches) % totalMatches);
+    setCurrentMatchIndex((prev) => (prev - 1 + totalMatches) % totalMatches);
   }, [totalMatches]);
 
   useEffect(() => {
@@ -453,30 +578,20 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     if (!searchQuery.trim() || !searchOpen) {
       return text;
     }
-    const query = searchQuery.toLowerCase();
-    const lowerText = text.toLowerCase();
+    const matches = matchesByLog.get(logIndex);
+    if (!matches || matches.length === 0) {
+      return text;
+    }
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
-    let matchCountInLog = 0;
-    let globalMatchStartIndex = 0;
-    for (let i = 0; i < logIndex; i++) {
-      const logText = (logs[i].display_text ?? formatData(logs[i].data)).toLowerCase();
-      let pos = 0;
-      while ((pos = logText.indexOf(query, pos)) !== -1) {
-        globalMatchStartIndex++;
-        pos += 1;
+    for (const match of matches) {
+      if (match.startPos > lastIndex) {
+        parts.push(text.substring(lastIndex, match.startPos));
       }
-    }
-    let pos = 0;
-    while ((pos = lowerText.indexOf(query, pos)) !== -1) {
-      if (pos > lastIndex) {
-        parts.push(text.substring(lastIndex, pos));
-      }
-      const globalIndex = globalMatchStartIndex + matchCountInLog;
-      const isCurrentMatch = globalIndex === currentMatchIndex;
+      const isCurrentMatch = match.globalIndex === currentMatchIndex;
       parts.push(
         <span
-          key={`${logIndex}-${pos}`}
+          key={`${logIndex}-${match.startPos}`}
           style={{
             backgroundColor: isCurrentMatch ? colors.warning : colors.accent,
             color: isCurrentMatch ? '#000' : colors.textPrimary,
@@ -484,12 +599,10 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
             padding: '0 1px',
           }}
         >
-          {text.substring(pos, pos + searchQuery.length)}
+          {text.substring(match.startPos, match.endPos)}
         </span>
       );
-      lastIndex = pos + searchQuery.length;
-      matchCountInLog++;
-      pos += 1;
+      lastIndex = match.endPos;
     }
     if (lastIndex < text.length) {
       parts.push(text.substring(lastIndex));
@@ -497,8 +610,8 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
     return parts.length > 0 ? parts : text;
   };
 
-  const sentCount = logs.filter(log => log.direction === 'Sent').length;
-  const receivedCount = logs.filter(log => log.direction === 'Received').length;
+  const sentCount = logs.filter((log) => log.direction === 'Sent').length;
+  const receivedCount = logs.filter((log) => log.direction === 'Received').length;
   const totalBytes = logs.reduce((acc, log) => acc + (log.byte_len ?? log.data.length), 0);
 
   return (
@@ -512,22 +625,70 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
         <div className="h-9 px-4 flex items-center justify-between">
           <div className="flex items-center gap-2" style={{ color: colors.textSecondary }}>
             <Terminal size={16} style={{ color: colors.textTertiary }} />
-            <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>{t('logViewer.consoleOutput')}</span>
-            <span className="text-xs" style={{ color: colors.textTertiary }}>({logs.length})</span>
+            <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>
+              {t('logViewer.consoleOutput')}
+            </span>
+            <span className="text-xs" style={{ color: colors.textTertiary }}>
+              ({logs.length})
+            </span>
           </div>
 
-          <div className="flex rounded-md p-0.5 border" style={{ backgroundColor: colors.bgInput, borderColor: colors.borderLight }}>
+          <div
+            className="flex rounded-md p-0.5 border"
+            style={{ backgroundColor: colors.bgInput, borderColor: colors.borderLight }}
+          >
             <Button variant="ghost" size="xs" className="h-6 text-xs gap-1" onClick={openSearch}>
               <Search size={12} />
               <span>{t('logViewer.search')}</span>
             </Button>
             <div className="w-px my-0.5 mx-0.5" style={{ backgroundColor: colors.border }}></div>
-            <Button variant="ghost" size="xs" className="h-6 text-xs gap-1" onClick={onExport} disabled={logs.length === 0}>
-              <Download size={12} />
-              <span>{t('logViewer.export')}</span>
-            </Button>
+            <div className="relative" ref={exportMenuRef}>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="h-6 text-xs gap-1"
+                onClick={() => setExportMenuOpen((open) => !open)}
+                disabled={logs.length === 0}
+                aria-haspopup="menu"
+                aria-expanded={exportMenuOpen}
+                title={t('logViewer.exportLogs')}
+              >
+                <Download size={12} />
+                <span>{t('logViewer.export')}</span>
+                <ChevronDown size={10} />
+              </Button>
+              {exportMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full mt-1 z-50 w-40 rounded-md border shadow-lg overflow-hidden"
+                  style={{ backgroundColor: colors.bgSidebar, borderColor: colors.border }}
+                >
+                  {(['Txt', 'Csv', 'Json'] as ExportFormat[]).map((format) => (
+                    <Button
+                      key={format}
+                      role="menuitem"
+                      variant="ghost"
+                      size="xs"
+                      className="w-full justify-start rounded-none text-xs"
+                      onClick={() => {
+                        setExportMenuOpen(false);
+                        onExport(format);
+                      }}
+                    >
+                      {t(`logViewer.export${format}`)}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="w-px my-0.5 mx-0.5" style={{ backgroundColor: colors.border }}></div>
-            <Button variant="ghost" size="xs" className="h-6 text-xs gap-1 hover:text-destructive" onClick={onClear} disabled={logs.length === 0}>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="h-6 text-xs gap-1 hover:text-destructive"
+              onClick={() => setClearConfirmOpen(true)}
+              disabled={logs.length === 0}
+            >
               <Trash2 size={12} />
               <span>{t('logViewer.clear')}</span>
             </Button>
@@ -535,11 +696,16 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
         </div>
 
         {/* Row 2 */}
-        <div className="h-8 px-4 flex items-center justify-between" style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+        <div
+          className="h-8 px-4 flex items-center justify-between"
+          style={{ borderTop: `1px solid ${colors.borderLight}` }}
+        >
           <div className="flex items-center gap-3">
             {/* Format Select */}
             <div className="flex items-center gap-1.5">
-              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.format')}:</span>
+              <span className="text-xs" style={{ color: colors.textTertiary }}>
+                {t('logViewer.format')}:
+              </span>
               <Select value={receiveFormat} onValueChange={(v) => setReceiveFormat(v as ReceiveDisplayFormat)}>
                 <SelectTrigger className="h-6 w-16 text-xs">
                   <SelectValue />
@@ -553,19 +719,39 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
 
             {/* Timestamp Toggle */}
             <div className="flex items-center gap-1.5">
-              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.timestamps')}</span>
+              <span className="text-xs" style={{ color: colors.textTertiary }}>
+                {t('logViewer.timestamps')}
+              </span>
               <Switch checked={showTimestamps} onCheckedChange={setShowTimestamps} />
             </div>
 
+            {/* Timestamp mode (absolute / relative / delta) */}
+            {showTimestamps && (
+              <Select value={timestampMode} onValueChange={(v) => setTimestampMode(v as TimestampMode)}>
+                <SelectTrigger className="h-6 w-[84px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="absolute">{t('logViewer.timestampAbsolute')}</SelectItem>
+                  <SelectItem value="relative">{t('logViewer.timestampRelative')}</SelectItem>
+                  <SelectItem value="delta">{t('logViewer.timestampDelta')}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+
             {/* Auto Scroll Toggle */}
             <div className="flex items-center gap-1.5">
-              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.autoScroll')}</span>
+              <span className="text-xs" style={{ color: colors.textTertiary }}>
+                {t('logViewer.autoScroll')}
+              </span>
               <Switch checked={autoScrollEnabled} onCheckedChange={setAutoScrollEnabled} />
             </div>
 
             {/* Line Numbers Toggle */}
             <div className="flex items-center gap-1.5">
-              <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.lineNumbers')}</span>
+              <span className="text-xs" style={{ color: colors.textTertiary }}>
+                {t('logViewer.lineNumbers')}
+              </span>
               <Switch checked={showLineNumbers} onCheckedChange={setShowLineNumbers} />
             </div>
           </div>
@@ -576,15 +762,24 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
               <Tooltip>
                 <TooltipTrigger asChild>
                   <label className="flex items-center gap-1.5 cursor-pointer">
-                    <Checkbox checked={saveTextEnabled} onCheckedChange={(checked) => handleSaveTextChange(!!checked)} />
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.saveText')}</span>
+                    <Checkbox
+                      checked={saveTextEnabled}
+                      onCheckedChange={(checked) => handleSaveTextChange(!!checked)}
+                    />
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('logViewer.saveText')}
+                    </span>
                     {recordingStatus.text_recording_active && (
                       <Circle size={8} fill={colors.success} style={{ color: colors.success }} />
                     )}
                   </label>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{recordingStatus.text_recording_active ? `${t('logViewer.recordingTo')}: ${recordingStatus.text_file_path}` : t('logViewer.enableTextRecording')}</p>
+                  <p>
+                    {recordingStatus.text_recording_active
+                      ? `${t('logViewer.recordingTo')}: ${recordingStatus.text_file_path}`
+                      : t('logViewer.enableTextRecording')}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -594,14 +789,20 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
                 <TooltipTrigger asChild>
                   <label className="flex items-center gap-1.5 cursor-pointer">
                     <Checkbox checked={saveRawEnabled} onCheckedChange={(checked) => handleSaveRawChange(!!checked)} />
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('logViewer.saveRaw')}</span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('logViewer.saveRaw')}
+                    </span>
                     {recordingStatus.raw_recording_active && (
                       <Circle size={8} fill={colors.success} style={{ color: colors.success }} />
                     )}
                   </label>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{recordingStatus.raw_recording_active ? `${t('logViewer.recordingTo')}: ${recordingStatus.raw_file_path}` : t('logViewer.enableRawRecording')}</p>
+                  <p>
+                    {recordingStatus.raw_recording_active
+                      ? `${t('logViewer.recordingTo')}: ${recordingStatus.raw_file_path}`
+                      : t('logViewer.enableRawRecording')}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -630,10 +831,22 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
               {totalMatches > 0 ? `${currentMatchIndex + 1}/${totalMatches}` : '0/0'}
             </span>
             <div className="flex items-center">
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={goToPrevMatch} disabled={totalMatches === 0}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={goToPrevMatch}
+                disabled={totalMatches === 0}
+              >
                 <ChevronUp size={14} />
               </Button>
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={goToNextMatch} disabled={totalMatches === 0}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={goToNextMatch}
+                disabled={totalMatches === 0}
+              >
                 <ChevronDown size={14} />
               </Button>
             </div>
@@ -662,50 +875,76 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
           </div>
         ) : (
           <div className="space-y-0.5">
-            {logs.map((log, index) => (
-              <div
-                key={log.gap_key ?? (log.seq ? `${log.session}-${log.seq}` : index)}
-                ref={(el) => { logEntryRefs.current[index] = el; }}
-                className="py-1 px-2 rounded-[4px] transition-colors duration-150"
-                style={{
-                  borderLeft: `2px solid ${log.direction === 'Sent' ? colors.accent : colors.success}`,
-                  backgroundColor: log.direction === 'Sent' ? colors.logSentBg : colors.logReceivedBg
-                }}
-              >
-                <div className="flex items-start gap-2">
-                  {showLineNumbers && (
+            {logs.map((log, index) => {
+              const previousEntry = index > 0 ? logs[index - 1] : null;
+              const showSessionDivider =
+                log.session != null &&
+                previousEntry !== null &&
+                previousEntry.session != null &&
+                log.session !== previousEntry.session;
+              const row = (
+                <div
+                  key={log.gap_key ?? (log.seq ? `${log.session}-${log.seq}` : index)}
+                  ref={(el) => {
+                    logEntryRefs.current[index] = el;
+                  }}
+                  className="py-1 px-2 rounded-[4px] transition-colors duration-150"
+                  style={{
+                    borderLeft: `2px solid ${log.direction === 'Sent' ? colors.accent : colors.success}`,
+                    backgroundColor: log.direction === 'Sent' ? colors.logSentBg : colors.logReceivedBg,
+                  }}
+                >
+                  <div className="flex items-start gap-2">
+                    {showLineNumbers && (
+                      <span
+                        className="text-xs select-none font-mono"
+                        style={{
+                          color: colors.textTertiary,
+                          opacity: 0.5,
+                          minWidth: `${Math.max(String(logs.length).length, 3)}ch`,
+                          textAlign: 'right',
+                        }}
+                      >
+                        {index + 1}
+                      </span>
+                    )}
+                    {showTimestamps && (
+                      <span className="text-xs select-none" style={{ color: colors.textTertiary, opacity: 0.6 }}>
+                        {renderTimestamp(log.timestamp, index)}
+                      </span>
+                    )}
                     <span
-                      className="text-xs select-none font-mono"
-                      style={{
-                        color: colors.textTertiary,
-                        opacity: 0.5,
-                        minWidth: `${Math.max(String(logs.length).length, 3)}ch`,
-                        textAlign: 'right'
-                      }}
+                      className="font-bold text-xs uppercase select-none"
+                      style={{ color: log.direction === 'Sent' ? colors.accent : colors.success }}
                     >
-                      {index + 1}
+                      {log.direction === 'Sent' ? 'TX' : 'RX'}
                     </span>
-                  )}
-                  {showTimestamps && (
-                    <span className="text-xs select-none" style={{ color: colors.textTertiary, opacity: 0.6 }}>
-                      {log.timestamp_formatted ?? formatTimestamp(log.timestamp)}
+                    <span
+                      className="flex-1 break-all font-mono text-sm whitespace-pre-wrap"
+                      style={{ color: colors.textPrimary }}
+                    >
+                      {renderTextWithHighlights(log.display_text ?? formatData(log.data), index)}
                     </span>
-                  )}
-                  <span
-                    className="font-bold text-xs uppercase select-none"
-                    style={{ color: log.direction === 'Sent' ? colors.accent : colors.success }}
-                  >
-                    {log.direction === 'Sent' ? 'TX' : 'RX'}
-                  </span>
-                  <span
-                    className="flex-1 break-all font-mono text-sm whitespace-pre-wrap"
-                    style={{ color: colors.textPrimary }}
-                  >
-                    {renderTextWithHighlights(log.display_text ?? formatData(log.data), index)}
-                  </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+              if (!showSessionDivider) return row;
+              return (
+                <React.Fragment key={`session-${log.session}-${index}`}>
+                  {/* New connection boundary: seq restarts per session, so
+                      make the break visible instead of silently mixing
+                      transcripts (S1-01). */}
+                  <div className="flex items-center gap-2 px-2 py-1 select-none" style={{ color: colors.textTertiary }}>
+                    <div className="h-px flex-1" style={{ backgroundColor: colors.border }} />
+                    <span className="text-[11px] whitespace-nowrap">
+                      {t('logViewer.newSession')} #{log.session}
+                    </span>
+                    <div className="h-px flex-1" style={{ backgroundColor: colors.border }} />
+                  </div>
+                  {row}
+                </React.Fragment>
+              );
+            })}
           </div>
         )}
       </div>
@@ -713,7 +952,11 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
       {/* Footer */}
       <div
         className="px-3 py-1 text-xs flex justify-between items-center select-none"
-        style={{ backgroundColor: colors.bgHeader, borderTop: `1px solid ${colors.borderDark}`, color: colors.textTertiary }}
+        style={{
+          backgroundColor: colors.bgHeader,
+          borderTop: `1px solid ${colors.borderDark}`,
+          color: colors.textTertiary,
+        }}
       >
         <div className="flex gap-4">
           <span className="flex items-center">
@@ -725,10 +968,28 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, isConnec
             {t('logViewer.rx')}: {receivedCount}
           </span>
         </div>
-        <span>{t('logViewer.total')}: {totalBytes.toLocaleString()} {t('logViewer.bytes')}</span>
+        <span>
+          {t('logViewer.total')}: {totalBytes.toLocaleString()} {t('logViewer.bytes')}
+        </span>
       </div>
+
+      <ConfirmDialog
+        open={clearConfirmOpen}
+        onOpenChange={setClearConfirmOpen}
+        title={t('logViewer.clearTitle')}
+        description={t('logViewer.clearDescription')}
+        onConfirm={onClear}
+      />
     </div>
   );
 };
 
-export default LogViewer;
+/**
+ * Memoized so an App re-render caused by unrelated state (e.g. a keystroke in
+ * the send textarea, the 1 s status poll) does not re-render the whole log
+ * list. Props are stable thanks to useCallback in App; `logs` only changes
+ * when the hook actually publishes a batch (S1-06, low-cost part).
+ */
+const MemoizedLogViewer = React.memo(LogViewer);
+
+export default MemoizedLogViewer;

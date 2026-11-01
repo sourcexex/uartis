@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { RefreshCw, Plug, PlugZap } from 'lucide-react';
-import { SerialPortInfo, ConnectionStatus } from '../types';
+import { RefreshCw, Plug, PlugZap, Zap } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'sonner';
+import { SerialPortInfo, ConnectionStatus, PinStates } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from '../i18n';
 
@@ -9,7 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface PortSelectorProps {
   ports: SerialPortInfo[];
@@ -34,6 +38,12 @@ const PortSelector: React.FC<PortSelectorProps> = ({
 }) => {
   const { colors } = useTheme();
   const { t } = useTranslation();
+
+  // Manual line control (S1-10): DTR/RTS outputs and input pin state.
+  const [dtr, setDtr] = useState(false);
+  const [rts, setRts] = useState(false);
+  const [pinStates, setPinStates] = useState<PinStates | null>(null);
+  const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
 
   // Animation state for refresh icon
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
@@ -111,9 +121,60 @@ const PortSelector: React.FC<PortSelectorProps> = ({
     };
   }, []);
 
+  // Poll CTS/DSR/RI/CD while connected so the line-state block reflects the
+  // real device (the backend reads them from the serial port handle).
+  useEffect(() => {
+    if (!connectionStatus.is_connected) {
+      setPinStates(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const pins = await invoke<PinStates>('get_pin_states');
+        if (!cancelled) setPinStates(pins);
+      } catch {
+        // Port may have been closed between the status poll and this call.
+        if (!cancelled) setPinStates(null);
+      }
+    };
+    void load();
+    const interval = window.setInterval(load, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [connectionStatus.is_connected]);
+
+  const handleDtrChange = async (checked: boolean) => {
+    try {
+      await invoke('set_dtr', { level: checked });
+      setDtr(checked);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const handleRtsChange = async (checked: boolean) => {
+    try {
+      await invoke('set_rts', { level: checked });
+      setRts(checked);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const handleBreak = async () => {
+    try {
+      await invoke('send_break', { durationMs: 250 });
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
   const handleConnectionToggle = () => {
     if (connectionStatus.is_connected) {
-      onDisconnect();
+      setDisconnectConfirmOpen(true);
     } else {
       onConnect();
     }
@@ -171,7 +232,9 @@ const PortSelector: React.FC<PortSelectorProps> = ({
           disabled={connectionStatus.is_connected || isLoading || ports.length === 0}
         >
           <SelectTrigger className="h-8 text-sm">
-            <SelectValue placeholder={ports.length === 0 ? t('portSelector.noPortsAvailable') : t('portSelector.selectPort')} />
+            <SelectValue
+              placeholder={ports.length === 0 ? t('portSelector.noPortsAvailable') : t('portSelector.selectPort')}
+            />
           </SelectTrigger>
           <SelectContent>
             {ports.map((port) => (
@@ -208,6 +271,55 @@ const PortSelector: React.FC<PortSelectorProps> = ({
         </div>
       </div>
 
+      {connectionStatus.is_connected && (
+        <div
+          className="rounded-md border p-2 space-y-1.5"
+          style={{ backgroundColor: colors.bgInput, borderColor: colors.borderLight }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textTertiary }}>
+              {t('portSelector.serialControl')}
+            </span>
+            <div className="flex items-center gap-1.5 text-[10px] font-mono" style={{ color: colors.textTertiary }}>
+              <TooltipProvider>
+                {(['cts', 'dsr', 'ri', 'cd'] as const).map((pin) => (
+                  <Tooltip key={pin}>
+                    <TooltipTrigger asChild>
+                      <span style={{ color: pinStates?.[pin] ? colors.success : colors.textTertiary }}>
+                        {pin.toUpperCase()} {pinStates?.[pin] ? '●' : '○'}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{pin.toUpperCase()}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+              </TooltipProvider>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs" style={{ color: colors.textSecondary }}>
+              <Switch checked={dtr} onCheckedChange={handleDtrChange} aria-label="DTR" />
+              DTR
+            </label>
+            <label className="flex items-center gap-1.5 text-xs" style={{ color: colors.textSecondary }}>
+              <Switch checked={rts} onCheckedChange={handleRtsChange} aria-label="RTS" />
+              RTS
+            </label>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-6 px-2 text-[10px] ml-auto"
+              onClick={handleBreak}
+              title={t('portSelector.breakTitle')}
+            >
+              <Zap size={10} className="mr-1" />
+              {t('portSelector.breakLabel')}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {selectedPort && !connectionStatus.is_connected && (
         <Card className="mt-2" style={{ backgroundColor: colors.buttonSecondaryBg, borderColor: colors.borderLight }}>
           <CardContent className="p-3">
@@ -215,23 +327,33 @@ const PortSelector: React.FC<PortSelectorProps> = ({
               {t('portSelector.portInformation')}
             </h4>
             {(() => {
-              const portInfo = ports.find(p => p.port_name === selectedPort);
+              const portInfo = ports.find((p) => p.port_name === selectedPort);
               if (!portInfo) return null;
 
               return (
                 <div className="space-y-1 text-xs" style={{ color: colors.textTertiary }}>
-                  <div>{t('portSelector.type')}: {portInfo.port_type}</div>
+                  <div>
+                    {t('portSelector.type')}: {portInfo.port_type}
+                  </div>
                   {portInfo.manufacturer && (
-                    <div>{t('portSelector.manufacturer')}: {portInfo.manufacturer}</div>
+                    <div>
+                      {t('portSelector.manufacturer')}: {portInfo.manufacturer}
+                    </div>
                   )}
                   {portInfo.product && (
-                    <div>{t('portSelector.product')}: {portInfo.product}</div>
+                    <div>
+                      {t('portSelector.product')}: {portInfo.product}
+                    </div>
                   )}
                   {portInfo.serial_number && (
-                    <div>{t('portSelector.serial')}: {portInfo.serial_number}</div>
+                    <div>
+                      {t('portSelector.serial')}: {portInfo.serial_number}
+                    </div>
                   )}
                   {portInfo.vid && portInfo.pid && (
-                    <div>VID:PID: {portInfo.vid.toString(16).toUpperCase()}:{portInfo.pid.toString(16).toUpperCase()}</div>
+                    <div>
+                      VID:PID: {portInfo.vid.toString(16).toUpperCase()}:{portInfo.pid.toString(16).toUpperCase()}
+                    </div>
                   )}
                 </div>
               );
@@ -239,8 +361,16 @@ const PortSelector: React.FC<PortSelectorProps> = ({
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={disconnectConfirmOpen}
+        onOpenChange={setDisconnectConfirmOpen}
+        title={t('portSelector.disconnectTitle')}
+        description={t('portSelector.disconnectDescription')}
+        onConfirm={onDisconnect}
+      />
     </div>
   );
 };
 
-export default PortSelector;
+export default React.memo(PortSelector);

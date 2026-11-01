@@ -1,12 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { Folder, Moon, Sun, ChevronDown, ChevronUp, Loader2, ExternalLink, Download, CheckCircle, AlertCircle } from 'lucide-react';
+import {
+  Folder,
+  Moon,
+  Sun,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  ExternalLink,
+  Download,
+  CheckCircle,
+  AlertCircle,
+} from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage, Language } from '../i18n';
-import { TextEncoding, SpecialCharConfig, FrameSegmentationConfig, FrameSegmentationMode, FrameDelimiter, TimezoneOption } from '../types';
-import { TIMEZONE_OPTIONS, loadTimezone, saveTimezone, getSystemTimezoneAsUtcOffset, getSystemTimezoneName, getSystemTimezoneOffset, parseUtcOffset } from '../utils/timezone';
+import {
+  TextEncoding,
+  SpecialCharConfig,
+  FrameSegmentationConfig,
+  FrameSegmentationMode,
+  FrameDelimiter,
+  TimezoneOption,
+} from '../types';
+import {
+  TIMEZONE_OPTIONS,
+  loadTimezone,
+  saveTimezone,
+  getSystemTimezoneAsUtcOffset,
+  getSystemTimezoneName,
+  getSystemTimezoneOffset,
+  parseUtcOffset,
+} from '../utils/timezone';
+import { LOG_LIMIT_CHANGED_EVENT, MAX_LOG_LIMIT, MIN_LOG_LIMIT, clampLogLimit } from '../constants';
 
 // shadcn components
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -75,13 +102,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
   const [timezone, setTimezoneState] = useState<TimezoneOption>(loadTimezone);
   const [logPath, setLogPath] = useState('~/Documents/UartisLogs');
   const [maxLogLines, setMaxLogLines] = useState(1000);
+  // Draft while the number is edited: never clamp mid-typing, commit on
+  // blur/Enter, cancel on Escape (same pattern as SendPanel's interval).
+  const [maxLogLinesDraft, setMaxLogLinesDraft] = useState<string | null>(null);
   const [textEncoding, setTextEncoding] = useState<TextEncoding>('utf-8');
   const [specialCharConfig, setSpecialCharConfig] = useState<SpecialCharConfig>(DEFAULT_SPECIAL_CHAR_CONFIG);
   const [specialCharExpanded, setSpecialCharExpanded] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
 
   // Frame segmentation state
-  const [frameSegmentationConfig, setFrameSegmentationConfig] = useState<FrameSegmentationConfig>(DEFAULT_FRAME_SEGMENTATION_CONFIG);
+  const [frameSegmentationConfig, setFrameSegmentationConfig] = useState<FrameSegmentationConfig>(
+    DEFAULT_FRAME_SEGMENTATION_CONFIG
+  );
   const [customDelimiterHex, setCustomDelimiterHex] = useState('');
   const [customDelimiterError, setCustomDelimiterError] = useState('');
 
@@ -117,7 +149,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
   // Format byte array to hex string for display
   const bytesToHexString = (bytes: number[]): string => {
-    return bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+    return bytes.map((b) => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
   };
 
   // Load saved settings from localStorage on component mount
@@ -132,7 +164,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
       setLogPath(savedLogPath);
     }
     if (savedMaxLogLines) {
-      setMaxLogLines(parseInt(savedMaxLogLines, 10));
+      const parsed = parseInt(savedMaxLogLines, 10);
+      if (!Number.isNaN(parsed)) {
+        setMaxLogLines(clampLogLimit(parsed));
+      }
     }
     if (savedTextEncoding === 'utf-8' || savedTextEncoding === 'gbk') {
       setTextEncoding(savedTextEncoding);
@@ -165,13 +200,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
     localStorage.setItem('uartis_logPath', path);
   };
 
-  // Save max log lines to localStorage and sync with backend
-  const handleMaxLogLinesChange = async (value: number) => {
-    const clampedValue = Math.min(10000, Math.max(100, value));
-    setMaxLogLines(clampedValue);
-    localStorage.setItem('uartis_maxLogLines', clampedValue.toString());
+  // Save max log lines to localStorage and sync with backend (S1-04: the
+  // value range matches the backend clamp 100–10000 in one place).
+  const commitMaxLogLines = async () => {
+    if (maxLogLinesDraft === null) return;
+    const parsed = parseInt(maxLogLinesDraft, 10);
+    setMaxLogLinesDraft(null);
+    const next = Number.isNaN(parsed) ? maxLogLines : clampLogLimit(parsed);
+    if (next === maxLogLines) return;
+    setMaxLogLines(next);
+    localStorage.setItem('uartis_maxLogLines', next.toString());
     try {
-      await invoke('set_log_limit', { limit: clampedValue });
+      await invoke('set_log_limit', { limit: next });
+      // Let the log buffer follow the new cap without polling.
+      window.dispatchEvent(new CustomEvent<number>(LOG_LIMIT_CHANGED_EVENT, { detail: next }));
     } catch (error) {
       console.error('Error setting log limit:', error);
     }
@@ -196,9 +238,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
     saveTimezone(tz);
 
     // Sync timezone offset to backend for recording timestamps
-    const offsetMinutes = tz === 'System'
-      ? Math.round(getSystemTimezoneOffset() * 60)
-      : Math.round(parseUtcOffset(tz) * 60);
+    const offsetMinutes =
+      tz === 'System' ? Math.round(getSystemTimezoneOffset() * 60) : Math.round(parseUtcOffset(tz) * 60);
     try {
       await invoke('set_timezone_offset', { offsetMinutes });
     } catch (error) {
@@ -238,7 +279,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
         setCustomDelimiterError('');
       } else {
         setCustomDelimiterHex('0A');
-        handleFrameSegmentationChange({ delimiter: { Custom: [0x0A] } });
+        handleFrameSegmentationChange({ delimiter: { Custom: [0x0a] } });
         setCustomDelimiterError('');
       }
     } else {
@@ -384,8 +425,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent disableFocusTrap className="max-w-[500px] max-h-[80vh] overflow-hidden flex flex-col p-0" style={{ backgroundColor: colors.bgSidebar }}>
-        <DialogHeader className="px-4 py-3 border-b" style={{ backgroundColor: colors.bgHeader, borderColor: colors.borderDark }}>
+      <DialogContent
+        disableFocusTrap
+        className="max-w-[500px] max-h-[80vh] overflow-hidden flex flex-col p-0"
+        style={{ backgroundColor: colors.bgSidebar }}
+      >
+        <DialogHeader
+          className="px-4 py-3 border-b"
+          style={{ backgroundColor: colors.bgHeader, borderColor: colors.borderDark }}
+        >
           <DialogTitle className="text-sm font-semibold" style={{ color: colors.textPrimary }}>
             {t('settings.title')}
           </DialogTitle>
@@ -394,7 +442,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
         <div className="p-5 space-y-6 overflow-y-auto flex-1">
           {/* Appearance Section */}
           <div className="space-y-3">
-            <Label className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
+            <Label
+              className="text-xs font-semibold uppercase tracking-wide ml-1"
+              style={{ color: colors.textTertiary }}
+            >
               {t('settings.appearance')}
             </Label>
             <Card className="p-1" style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
@@ -423,16 +474,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
           {/* Regional Section */}
           <div className="space-y-3">
-            <Label className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
+            <Label
+              className="text-xs font-semibold uppercase tracking-wide ml-1"
+              style={{ color: colors.textTertiary }}
+            >
               {t('settings.regional')}
             </Label>
             <Card style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
               <CardContent className="p-0">
                 {/* Language Item */}
-                <div className="p-3 flex items-center justify-between border-b" style={{ borderColor: colors.borderLight }}>
+                <div
+                  className="p-3 flex items-center justify-between border-b"
+                  style={{ borderColor: colors.borderLight }}
+                >
                   <div className="flex flex-col">
-                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.language')}</span>
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.languageDesc')}</span>
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>
+                      {t('settings.language')}
+                    </span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('settings.languageDesc')}
+                    </span>
                   </div>
                   <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
                     <SelectTrigger className="w-32 h-8 text-xs">
@@ -448,11 +509,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 {/* Timezone Item */}
                 <div className="p-3 flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.timezone')}</span>
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>
+                      {t('settings.timezone')}
+                    </span>
                     <span className="text-xs" style={{ color: colors.textTertiary }}>
                       {t('settings.timezoneDesc')}
                       {timezone === 'System' && (
-                        <span className="ml-1">({getSystemTimezoneName()}, {getSystemTimezoneAsUtcOffset()})</span>
+                        <span className="ml-1">
+                          ({getSystemTimezoneName()}, {getSystemTimezoneAsUtcOffset()})
+                        </span>
                       )}
                     </span>
                   </div>
@@ -475,22 +540,39 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
           {/* General Section */}
           <div className="space-y-3">
-            <Label className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
+            <Label
+              className="text-xs font-semibold uppercase tracking-wide ml-1"
+              style={{ color: colors.textTertiary }}
+            >
               {t('settings.general')}
             </Label>
             <Card style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
               <CardContent className="p-0">
                 {/* Log Path Item */}
-                <div className="p-3 flex items-center justify-between border-b" style={{ borderColor: colors.borderLight }}>
+                <div
+                  className="p-3 flex items-center justify-between border-b"
+                  style={{ borderColor: colors.borderLight }}
+                >
                   <div className="flex flex-col">
-                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.defaultLogPath')}</span>
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.defaultLogPathDesc')}</span>
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>
+                      {t('settings.defaultLogPath')}
+                    </span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('settings.defaultLogPathDesc')}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <div className="rounded px-2 py-1 text-xs max-w-[120px] truncate border cursor-default" style={{ backgroundColor: colors.bgSurface, borderColor: colors.border, color: colors.textSecondary }}>
+                          <div
+                            className="rounded px-2 py-1 text-xs max-w-[120px] truncate border cursor-default"
+                            style={{
+                              backgroundColor: colors.bgSurface,
+                              borderColor: colors.border,
+                              color: colors.textSecondary,
+                            }}
+                          >
                             {logPath}
                           </div>
                         </TooltipTrigger>
@@ -521,27 +603,49 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 </div>
 
                 {/* Max Log Lines Item */}
-                <div className="p-3 flex items-center justify-between border-b" style={{ borderColor: colors.borderLight }}>
+                <div
+                  className="p-3 flex items-center justify-between border-b"
+                  style={{ borderColor: colors.borderLight }}
+                >
                   <div className="flex flex-col">
-                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.maxLogLines')}</span>
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.maxLogLinesDesc')}</span>
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>
+                      {t('settings.maxLogLines')}
+                    </span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('settings.maxLogLinesDesc')}
+                    </span>
                   </div>
                   <Input
                     type="number"
-                    min="1000"
-                    max="100000"
-                    step="1000"
-                    value={maxLogLines}
-                    onChange={(e) => handleMaxLogLinesChange(parseInt(e.target.value, 10) || 1000)}
+                    min={MIN_LOG_LIMIT}
+                    max={MAX_LOG_LIMIT}
+                    step={100}
+                    value={maxLogLinesDraft ?? String(maxLogLines)}
+                    onFocus={() => setMaxLogLinesDraft(String(maxLogLines))}
+                    onChange={(e) => setMaxLogLinesDraft(e.target.value.replace(/[^0-9]/g, ''))}
+                    onBlur={() => {
+                      void commitMaxLogLines();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void commitMaxLogLines();
+                      if (e.key === 'Escape') setMaxLogLinesDraft(null);
+                    }}
                     className="w-24 h-8 text-xs text-right"
                   />
                 </div>
 
                 {/* Text Encoding Item */}
-                <div className="p-3 flex items-center justify-between border-b" style={{ borderColor: colors.borderLight }}>
+                <div
+                  className="p-3 flex items-center justify-between border-b"
+                  style={{ borderColor: colors.borderLight }}
+                >
                   <div className="flex flex-col">
-                    <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.textEncoding')}</span>
-                    <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.textEncodingDesc')}</span>
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>
+                      {t('settings.textEncoding')}
+                    </span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('settings.textEncodingDesc')}
+                    </span>
                   </div>
                   <Select value={textEncoding} onValueChange={(v) => handleTextEncodingChange(v as TextEncoding)}>
                     <SelectTrigger className="w-24 h-8 text-xs">
@@ -558,8 +662,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 <div className="border-b" style={{ borderColor: colors.borderLight }}>
                   <div className="p-3 flex items-center justify-between">
                     <div className="flex flex-col">
-                      <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.convertSpecialChars')}</span>
-                      <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.convertSpecialCharsDesc')}</span>
+                      <span className="text-sm" style={{ color: colors.textPrimary }}>
+                        {t('settings.convertSpecialChars')}
+                      </span>
+                      <span className="text-xs" style={{ color: colors.textTertiary }}>
+                        {t('settings.convertSpecialCharsDesc')}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Switch
@@ -567,7 +675,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                         onCheckedChange={(enabled) => handleSpecialCharConfigChange({ enabled })}
                       />
                       {specialCharConfig.enabled && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSpecialCharExpanded(!specialCharExpanded)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setSpecialCharExpanded(!specialCharExpanded)}
+                        >
                           {specialCharExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </Button>
                       )}
@@ -576,7 +689,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
                   {/* Sub-options for special character conversion */}
                   {specialCharConfig.enabled && specialCharExpanded && (
-                    <div className="px-3 pt-2 pb-3 grid grid-cols-2 gap-2" style={{ backgroundColor: colors.bgSurface }}>
+                    <div
+                      className="px-3 pt-2 pb-3 grid grid-cols-2 gap-2"
+                      style={{ backgroundColor: colors.bgSurface }}
+                    >
                       {[
                         { key: 'convertLF', label: '\\n → ␊', descKey: 'settings.lineFeed' },
                         { key: 'convertCR', label: '\\r → ␍', descKey: 'settings.carriageReturn' },
@@ -594,8 +710,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                             onCheckedChange={(checked) => handleSpecialCharConfigChange({ [key]: checked })}
                           />
                           <div className="flex flex-col">
-                            <span className="text-xs font-mono" style={{ color: colors.textPrimary }}>{label}</span>
-                            <span className="text-[10px]" style={{ color: colors.textTertiary }}>{t(descKey)}</span>
+                            <span className="text-xs font-mono" style={{ color: colors.textPrimary }}>
+                              {label}
+                            </span>
+                            <span className="text-[10px]" style={{ color: colors.textTertiary }}>
+                              {t(descKey)}
+                            </span>
                           </div>
                         </label>
                       ))}
@@ -607,14 +727,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 <div className="border-b" style={{ borderColor: colors.borderLight }}>
                   <div className="p-3 flex flex-col gap-3">
                     <div className="flex flex-col">
-                      <span className="text-sm" style={{ color: colors.textPrimary }}>{t('settings.frameSegmentation')}</span>
-                      <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.frameSegmentationDesc')}</span>
+                      <span className="text-sm" style={{ color: colors.textPrimary }}>
+                        {t('settings.frameSegmentation')}
+                      </span>
+                      <span className="text-xs" style={{ color: colors.textTertiary }}>
+                        {t('settings.frameSegmentationDesc')}
+                      </span>
                     </div>
 
                     {/* Mode selector */}
                     <div className="flex items-center gap-2">
-                      <span className="text-xs w-14" style={{ color: colors.textSecondary }}>{t('settings.mode')}:</span>
-                      <div className="flex rounded-md overflow-hidden flex-1 border" style={{ borderColor: colors.borderLight }}>
+                      <span className="text-xs w-14" style={{ color: colors.textSecondary }}>
+                        {t('settings.mode')}:
+                      </span>
+                      <div
+                        className="flex rounded-md overflow-hidden flex-1 border"
+                        style={{ borderColor: colors.borderLight }}
+                      >
                         {(['Timeout', 'Combined'] as FrameSegmentationMode[]).map((mode) => (
                           <Button
                             key={mode}
@@ -631,27 +760,35 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
                     {/* Timeout setting - always shown since both modes use timeout */}
                     <div className="flex items-center gap-2">
-                      <span className="text-xs w-14" style={{ color: colors.textSecondary }}>Timeout:</span>
+                      <span className="text-xs w-14" style={{ color: colors.textSecondary }}>
+                        Timeout:
+                      </span>
                       <Input
                         type="number"
                         min="10"
                         max="1000"
                         step="10"
-                          value={frameSegmentationConfig.timeout_ms}
-                          onChange={(e) => handleTimeoutChange(parseInt(e.target.value, 10) || 10)}
-                          className="w-20 h-7 text-xs text-right"
-                        />
-                        <span className="text-xs" style={{ color: colors.textTertiary }}>ms (10-1000)</span>
-                      </div>
+                        value={frameSegmentationConfig.timeout_ms}
+                        onChange={(e) => handleTimeoutChange(parseInt(e.target.value, 10) || 10)}
+                        className="w-20 h-7 text-xs text-right"
+                      />
+                      <span className="text-xs" style={{ color: colors.textTertiary }}>
+                        ms (10-1000)
+                      </span>
+                    </div>
 
                     {/* Delimiter setting - only shown in Combined mode */}
                     {frameSegmentationConfig.mode === 'Combined' && (
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs w-14" style={{ color: colors.textSecondary }}>{t('settings.delimiterLabel')}:</span>
+                          <span className="text-xs w-14" style={{ color: colors.textSecondary }}>
+                            {t('settings.delimiterLabel')}:
+                          </span>
                           <Select
                             value={getDelimiterType(frameSegmentationConfig.delimiter)}
-                            onValueChange={(v) => handleDelimiterTypeChange(v as 'AnyNewline' | 'CR' | 'LF' | 'CRLF' | 'Custom')}
+                            onValueChange={(v) =>
+                              handleDelimiterTypeChange(v as 'AnyNewline' | 'CR' | 'LF' | 'CRLF' | 'Custom')
+                            }
                           >
                             <SelectTrigger className="flex-1 h-7 text-xs">
                               <SelectValue />
@@ -678,7 +815,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                             />
                             {customDelimiterError && (
                               <span className="text-xs text-destructive">
-                                {customDelimiterError === 'Invalid hex format' ? t('settings.invalidHex') : t('settings.delimiterEmpty')}
+                                {customDelimiterError === 'Invalid hex format'
+                                  ? t('settings.invalidHex')
+                                  : t('settings.delimiterEmpty')}
                               </span>
                             )}
                           </div>
@@ -693,7 +832,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
           {/* About Section */}
           <div className="space-y-3">
-            <Label className="text-xs font-semibold uppercase tracking-wide ml-1" style={{ color: colors.textTertiary }}>
+            <Label
+              className="text-xs font-semibold uppercase tracking-wide ml-1"
+              style={{ color: colors.textTertiary }}
+            >
               {t('settings.about')}
             </Label>
             <Card style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
@@ -701,9 +843,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 {/* App Info Row */}
                 <div className="p-4 flex items-center justify-between">
                   <div>
-                    <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>{t('app.title')}</div>
-                    <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.version')} {__APP_VERSION__} (Build {__APP_BUILD__})</div>
-                    <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('settings.maintainedBy')}</div>
+                    <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>
+                      {t('app.title')}
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                      {t('settings.version')} {__APP_VERSION__} (Build {__APP_BUILD__})
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                      {t('settings.maintainedBy')}
+                    </div>
                   </div>
                   <Button
                     variant="secondary"
@@ -724,7 +872,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
                 {/* Update Available State */}
                 {updateState === 'available' && updateInfo && (
-                  <div className="p-4 border-t space-y-3" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                  <div
+                    className="p-4 border-t space-y-3"
+                    style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                  >
                     <div className="flex items-start gap-2">
                       <Download size={16} className="mt-0.5 flex-shrink-0 text-primary" />
                       <div className="flex-1">
@@ -732,10 +883,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                           {t('settings.updateAvailable')}
                         </div>
                         <div className="text-xs mt-1 space-y-0.5" style={{ color: colors.textSecondary }}>
-                          <div>{t('settings.currentVersion')}: {updateInfo.current_version}</div>
-                          <div>{t('settings.latestVersion')}: {updateInfo.latest_version}</div>
+                          <div>
+                            {t('settings.currentVersion')}: {updateInfo.current_version}
+                          </div>
+                          <div>
+                            {t('settings.latestVersion')}: {updateInfo.latest_version}
+                          </div>
                           {updateInfo.download_size && (
-                            <div>{t('settings.downloadSize')}: {formatBytes(updateInfo.download_size)}</div>
+                            <div>
+                              {t('settings.downloadSize')}: {formatBytes(updateInfo.download_size)}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -744,7 +901,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                       <Button className="flex-1" size="sm" onClick={handleDownloadUpdate}>
                         {t('settings.downloadAndInstall')}
                       </Button>
-                      <Button variant="secondary" size="sm" onClick={handleViewReleaseNotes} className="flex items-center gap-1">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleViewReleaseNotes}
+                        className="flex items-center gap-1"
+                      >
                         <ExternalLink size={12} />
                         <span>{t('settings.viewReleaseNotes')}</span>
                       </Button>
@@ -757,7 +919,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
                 {/* Downloading State */}
                 {updateState === 'downloading' && (
-                  <div className="p-4 border-t space-y-3" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                  <div
+                    className="p-4 border-t space-y-3"
+                    style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                  >
                     <div className="flex items-center gap-2">
                       <Loader2 size={16} className="animate-spin text-primary" />
                       <span className="text-sm" style={{ color: colors.textPrimary }}>
@@ -770,7 +935,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
                 {/* Ready to Install State */}
                 {updateState === 'ready' && (
-                  <div className="p-4 border-t space-y-3" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                  <div
+                    className="p-4 border-t space-y-3"
+                    style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                  >
                     <div className="flex items-start gap-2">
                       <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-green-500" />
                       <div className="flex-1">
@@ -795,13 +963,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
                 {/* Error State */}
                 {updateState === 'error' && updateError && (
-                  <div className="p-4 border-t space-y-3" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                  <div
+                    className="p-4 border-t space-y-3"
+                    style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                  >
                     <div className="flex items-start gap-2">
                       <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-destructive" />
                       <div className="flex-1">
-                        <div className="font-medium text-sm text-destructive">
-                          {t('settings.updateError')}
-                        </div>
+                        <div className="font-medium text-sm text-destructive">{t('settings.updateError')}</div>
                         <div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: colors.textSecondary }}>
                           {updateError}
                         </div>
@@ -815,7 +984,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
                 {/* Up to date message (shown briefly) */}
                 {updateState === 'idle' && updateError === t('settings.upToDate') && (
-                  <div className="p-3 border-t flex items-center gap-2" style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}>
+                  <div
+                    className="p-3 border-t flex items-center gap-2"
+                    style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
+                  >
                     <CheckCircle size={14} className="text-green-500" />
                     <span className="text-xs" style={{ color: colors.textSecondary }}>
                       {t('settings.upToDate')}
@@ -824,8 +996,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 )}
 
                 {/* Project links */}
-                <div className="px-4 py-2.5 border-t flex items-center justify-between" style={{ borderColor: colors.borderLight }}>
-                  <span className="text-xs" style={{ color: colors.textTertiary }}>{t('settings.copyright')}</span>
+                <div
+                  className="px-4 py-2.5 border-t flex items-center justify-between"
+                  style={{ borderColor: colors.borderLight }}
+                >
+                  <span className="text-xs" style={{ color: colors.textTertiary }}>
+                    {t('settings.copyright')}
+                  </span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -846,4 +1023,4 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
   );
 };
 
-export default SettingsModal;
+export default React.memo(SettingsModal);

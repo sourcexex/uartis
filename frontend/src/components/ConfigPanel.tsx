@@ -29,9 +29,8 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
   };
 
   const baudRateOptions = [
-    300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 56000,
-    57600, 115200, 128000, 230400, 256000, 460800, 512000, 750000,
-    921600, 1500000, 2000000
+    300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 56000, 57600, 115200, 128000, 230400, 256000, 460800, 512000,
+    750000, 921600, 1500000, 2000000,
   ];
 
   const handleBaudRateSelectChange = (value: string) => {
@@ -176,11 +175,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
           <Label className="block text-xs mb-1 ml-1" style={{ color: colors.textSecondary }}>
             {t('configPanel.parity')}
           </Label>
-          <Select
-            value={config.parity}
-            onValueChange={(v) => updateConfig('parity', v as Parity)}
-            disabled={disabled}
-          >
+          <Select value={config.parity} onValueChange={(v) => updateConfig('parity', v as Parity)} disabled={disabled}>
             <SelectTrigger className="h-9">
               <SelectValue />
             </SelectTrigger>
@@ -233,13 +228,11 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, disabled })
 
       {disabled && (
         <Alert variant="warning" className="py-2">
-          <AlertDescription className="text-xs">
-            {t('configPanel.disconnectToModify')}
-          </AlertDescription>
+          <AlertDescription className="text-xs">{t('configPanel.disconnectToModify')}</AlertDescription>
         </Alert>
       )}
     </div>
   );
 };
 
-export default ConfigPanel;
+export default React.memo(ConfigPanel);

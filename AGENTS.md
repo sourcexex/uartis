@@ -6,7 +6,7 @@ Tauri 2 + React 18 串口调试工具。前端在 `frontend/`，Rust 在 `src-ta
 
 ## 本地运行（macOS）
 
-本机通常没有 `cargo-tauri`。从仓库根目录：
+本机通常没有 `cargo-tauri`，仓库也没有把 `@tauri-apps/cli` 声明为依赖；所有 Tauri CLI 命令都用 `npx @tauri-apps/cli@2 ...`（不要用 `cargo tauri ...`）。从仓库根目录：
 
 ```bash
 cd frontend && npm install && npm run dev   # 终端 1，端口 5173
@@ -20,7 +20,7 @@ macOS 打包需要 `src-tauri/icons/` 里的 `icon.png` 和 `icon.icns`，不能
 - 同一设备会同时出现 `/dev/cu.*` 和 `/dev/tty.*`。列表里只保留 `cu`（`filter_macos_tty_duplicates`）。
 - 隐藏系统虚拟口：`debug-console`、`Bluetooth-Incoming-Port`。
 - USB 转串口排在前面。连接用 `/dev/cu.usbserial-*`，不要用 `tty.*`。
-- POSIX 不支持 Mark/Space 校验和 1.5 停止位，后端会当成 None / 1。
+- POSIX 不支持 Mark/Space 奇偶校验与 1.5 停止位：后端会把 Mark/Space 静默降级为 None、1.5 降级为 1（见 `serial_manager.rs`），UI 选项存在但实际连接参数会变。
 
 快捷键：搜索用 ⌘F（Ctrl+F 也可）；发送占位符在 Mac 上显示 ⌘+Enter。
 

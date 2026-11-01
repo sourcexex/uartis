@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { save as saveFileDialog } from '@tauri-apps/plugin-dialog';
 import { Settings, PanelLeftClose, PanelLeft } from 'lucide-react';
 import PortSelector from './components/PortSelector';
 import ConfigPanel from './components/ConfigPanel';
@@ -7,24 +8,42 @@ import LogViewer from './components/LogViewer';
 import SendPanel, { SEND_PANEL_MIN_HEIGHTS } from './components/SendPanel';
 import StatusBar from './components/StatusBar';
 import SettingsModal from './components/SettingsModal';
-import { SerialPortInfo, SerialConfig, LogEntry, ConnectionStatus, DataFormat, ChecksumConfig, QuickCommandList, QuickCommand, LineEnding, TextEncoding, FrameSegmentationConfig } from './types';
+import {
+  SerialPortInfo,
+  SerialConfig,
+  LogEntry,
+  ConnectionStatus,
+  DataFormat,
+  ChecksumConfig,
+  QuickCommandList,
+  QuickCommand,
+  LineEnding,
+  FrameSegmentationConfig,
+  ExportFormat,
+} from './types';
 import { useTheme } from './contexts/ThemeContext';
 import { useTranslation } from './i18n';
 import { useSerialLogs } from './hooks/useSerialLogs';
 import { appendChecksum } from './utils/checksum';
+import { getTextEncoding, textToBytes } from './utils/encoding';
 import { loadTimezone, formatDateForFilename, getSystemTimezoneOffset, parseUtcOffset } from './utils/timezone';
+import { clampLogLimit, LOG_LIMIT_CHANGED_EVENT } from './constants';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 import { Button } from './components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
 
 const QUICK_COMMANDS_STORAGE_KEY = 'uartis-quick-commands';
-const STORAGE_KEY_TEXT_ENCODING = 'uartis_textEncoding';
 const STORAGE_KEY_SIDEBAR_WIDTH = 'uartis_sidebarWidth';
 const STORAGE_KEY_SIDEBAR_COLLAPSED = 'uartis_sidebarCollapsed';
 const STORAGE_KEY_LOG_VIEWER_HEIGHT = 'uartis_logViewerHeight';
 const STORAGE_KEY_FRAME_SEGMENTATION = 'uartis_frameSegmentation';
+const STORAGE_KEY_MAX_LOG_LINES = 'uartis_maxLogLines';
 const INITIAL_COMMANDS = 20;
+
+/** Send failures can fire on every scheduled tick (10 ms floor); surface one
+ *  toast per window instead of flooding the screen (S1-03). */
+const SEND_ERROR_TOAST_INTERVAL_MS = 3000;
 
 // Layout constants
 const DEFAULT_SIDEBAR_WIDTH = 320;
@@ -61,7 +80,7 @@ const loadQuickCommandsFromStorage = (): { lists: QuickCommandList[]; currentLis
           ...list,
           commands: list.commands.map((cmd: QuickCommand) => ({
             ...cmd,
-            name: cmd.name ?? '',  // Default to empty string if name doesn't exist
+            name: cmd.name ?? '', // Default to empty string if name doesn't exist
           })),
         }));
         return { lists: migratedLists, currentListId: parsed.currentListId };
@@ -80,11 +99,6 @@ const saveQuickCommandsToStorage = (lists: QuickCommandList[], currentListId: st
   } catch (e) {
     console.error('Failed to save quick commands to storage:', e);
   }
-};
-
-const getTextEncoding = (): TextEncoding => {
-  const saved = localStorage.getItem(STORAGE_KEY_TEXT_ENCODING);
-  return (saved === 'utf-8' || saved === 'gbk') ? saved : 'utf-8';
 };
 
 // Layout persistence helpers
@@ -114,6 +128,37 @@ const getSavedLogViewerHeight = (): number | null => {
   return null;
 };
 
+/**
+ * The 1 s status poll runs forever; returning the previous object when nothing
+ * changed keeps `connectionStatus` referentially stable so memoized panels do
+ * not re-render every second.
+ */
+const isSameConnectionStatus = (a: ConnectionStatus, b: ConnectionStatus): boolean => {
+  if (a === b) return true;
+  if (
+    a.is_connected !== b.is_connected ||
+    a.port_name !== b.port_name ||
+    a.bytes_sent !== b.bytes_sent ||
+    a.bytes_received !== b.bytes_received ||
+    a.connection_time !== b.connection_time ||
+    a.connection_error !== b.connection_error
+  ) {
+    return false;
+  }
+  const configA = a.config;
+  const configB = b.config;
+  if (configA === configB) return true;
+  if (!configA || !configB) return false;
+  return (
+    configA.baud_rate === configB.baud_rate &&
+    configA.data_bits === configB.data_bits &&
+    configA.parity === configB.parity &&
+    configA.stop_bits === configB.stop_bits &&
+    configA.flow_control === configB.flow_control &&
+    configA.timeout === configB.timeout
+  );
+};
+
 function App() {
   const { colors } = useTheme();
   const { t } = useTranslation();
@@ -140,14 +185,14 @@ function App() {
   // RFC #3 Step 4: event push is the default log path; set
   // localStorage 'uartisEventPush' = '0' to roll back to 100ms polling.
   const [eventPush] = useState(() => localStorage.getItem('uartisEventPush') !== '0');
-  const { logs: pushedLogs, clearLogs: clearPushedLogs } = useSerialLogs(eventPush);
+  const { logs: pushedLogs, clearLogs: clearPushedLogs, resync: resyncPushedLogs } = useSerialLogs(eventPush);
   const logs = eventPush ? pushedLogs : polledLogs;
   const [sendText, setSendText] = useState('');
   const [sendFormat, setSendFormat] = useState<DataFormat>('Text');
   const [checksumConfig, setChecksumConfig] = useState<ChecksumConfig>({
     type: 'None',
-    startIndex: 0,   // 0 = first byte
-    endIndex: -1,    // -1 = last byte (include all)
+    startIndex: 0, // 0 = first byte
+    endIndex: -1, // -1 = last byte (include all)
   });
   const [isLoading, setIsLoading] = useState(false);
   const [userHasSelectedPort, setUserHasSelectedPort] = useState(false);
@@ -179,6 +224,9 @@ function App() {
   // 使用useRef来保存最新的状态值，避免闭包陷阱
   const selectedPortRef = useRef(selectedPort);
   const userHasSelectedPortRef = useRef(userHasSelectedPort);
+  const connectionStatusRef = useRef(connectionStatus);
+  const tRef = useRef(t);
+  const lastSendErrorToastRef = useRef(0);
 
   // 更新ref值
   useEffect(() => {
@@ -188,6 +236,14 @@ function App() {
   useEffect(() => {
     userHasSelectedPortRef.current = userHasSelectedPort;
   }, [userHasSelectedPort]);
+
+  useEffect(() => {
+    connectionStatusRef.current = connectionStatus;
+  }, [connectionStatus]);
+
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   // Persist quick commands to localStorage
   useEffect(() => {
@@ -242,24 +298,30 @@ function App() {
   }, [sidebarCollapsed, wasAutoCollapsed]);
 
   // Sidebar resize handlers
-  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizingSidebar(true);
-    sidebarResizeRef.current = {
-      startX: e.clientX,
-      startWidth: sidebarWidth,
-    };
-  }, [sidebarWidth]);
+  const handleSidebarResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsResizingSidebar(true);
+      sidebarResizeRef.current = {
+        startX: e.clientX,
+        startWidth: sidebarWidth,
+      };
+    },
+    [sidebarWidth]
+  );
 
-  const handleSidebarResizeMove = useCallback((e: MouseEvent) => {
-    if (!isResizingSidebar || !sidebarResizeRef.current) return;
+  const handleSidebarResizeMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizingSidebar || !sidebarResizeRef.current) return;
 
-    const deltaX = e.clientX - sidebarResizeRef.current.startX;
-    const newWidth = sidebarResizeRef.current.startWidth + deltaX;
-    const maxWidth = window.innerWidth * 0.5;
-    const clampedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxWidth, newWidth));
-    setSidebarWidth(clampedWidth);
-  }, [isResizingSidebar]);
+      const deltaX = e.clientX - sidebarResizeRef.current.startX;
+      const newWidth = sidebarResizeRef.current.startWidth + deltaX;
+      const maxWidth = window.innerWidth * 0.5;
+      const clampedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxWidth, newWidth));
+      setSidebarWidth(clampedWidth);
+    },
+    [isResizingSidebar]
+  );
 
   const handleSidebarResizeEnd = useCallback(() => {
     setIsResizingSidebar(false);
@@ -267,30 +329,36 @@ function App() {
   }, []);
 
   // Vertical resize handlers (between log viewer and send panel)
-  const handleVerticalResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    if (!mainContentRef.current) return;
+  const handleVerticalResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (!mainContentRef.current) return;
 
-    setIsResizingVertical(true);
-    const mainContentRect = mainContentRef.current.getBoundingClientRect();
-    const currentLogHeight = logViewerHeight ?? mainContentRect.height * DEFAULT_LOG_VIEWER_RATIO;
+      setIsResizingVertical(true);
+      const mainContentRect = mainContentRef.current.getBoundingClientRect();
+      const currentLogHeight = logViewerHeight ?? mainContentRect.height * DEFAULT_LOG_VIEWER_RATIO;
 
-    verticalResizeRef.current = {
-      startY: e.clientY,
-      startHeight: currentLogHeight,
-    };
-  }, [logViewerHeight]);
+      verticalResizeRef.current = {
+        startY: e.clientY,
+        startHeight: currentLogHeight,
+      };
+    },
+    [logViewerHeight]
+  );
 
-  const handleVerticalResizeMove = useCallback((e: MouseEvent) => {
-    if (!isResizingVertical || !verticalResizeRef.current || !mainContentRef.current) return;
+  const handleVerticalResizeMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizingVertical || !verticalResizeRef.current || !mainContentRef.current) return;
 
-    const mainContentRect = mainContentRef.current.getBoundingClientRect();
-    const deltaY = e.clientY - verticalResizeRef.current.startY;
-    const newHeight = verticalResizeRef.current.startHeight + deltaY;
-    const maxHeight = mainContentRect.height - sendPanelMinHeight;
-    const clampedHeight = Math.max(MIN_LOG_VIEWER_HEIGHT, Math.min(maxHeight, newHeight));
-    setLogViewerHeight(clampedHeight);
-  }, [isResizingVertical, sendPanelMinHeight]);
+      const mainContentRect = mainContentRef.current.getBoundingClientRect();
+      const deltaY = e.clientY - verticalResizeRef.current.startY;
+      const newHeight = verticalResizeRef.current.startHeight + deltaY;
+      const maxHeight = mainContentRect.height - sendPanelMinHeight;
+      const clampedHeight = Math.max(MIN_LOG_VIEWER_HEIGHT, Math.min(maxHeight, newHeight));
+      setLogViewerHeight(clampedHeight);
+    },
+    [isResizingVertical, sendPanelMinHeight]
+  );
 
   const handleVerticalResizeEnd = useCallback(() => {
     setIsResizingVertical(false);
@@ -332,7 +400,7 @@ function App() {
 
   // Toggle sidebar collapse
   const toggleSidebarCollapse = useCallback(() => {
-    setSidebarCollapsed(prev => !prev);
+    setSidebarCollapsed((prev) => !prev);
     setWasAutoCollapsed(false); // User manually toggled, so reset auto-collapse tracking
   }, []);
 
@@ -343,21 +411,32 @@ function App() {
   const loadPorts = useCallback(async () => {
     try {
       const availablePorts = await invoke<SerialPortInfo[]>('list_serial_ports');
-      setPorts(availablePorts);
-      
+      // Preserve referential identity when the list did not change so the
+      // 3 s poll does not re-render PortSelector for nothing.
+      setPorts((prev) => {
+        const unchanged =
+          prev.length === availablePorts.length &&
+          prev.every(
+            (port, index) =>
+              port.port_name === availablePorts[index].port_name &&
+              port.description === availablePorts[index].description
+          );
+        return unchanged ? prev : availablePorts;
+      });
+
       // 使用ref获取最新的状态值
       const currentUserHasSelectedPort = userHasSelectedPortRef.current;
       const currentSelectedPort = selectedPortRef.current;
-      
+
       // Case 1: Initial load - auto-select first port if user hasn't made any choice
       if (!currentUserHasSelectedPort && !currentSelectedPort && availablePorts.length > 0) {
         setSelectedPort(availablePorts[0].port_name);
         return;
       }
-      
+
       // Case 2: User has made a selection - preserve it if possible
       if (currentUserHasSelectedPort && currentSelectedPort) {
-        const isSelectedPortAvailable = availablePorts.some(p => p.port_name === currentSelectedPort);
+        const isSelectedPortAvailable = availablePorts.some((p) => p.port_name === currentSelectedPort);
         if (!isSelectedPortAvailable) {
           // Only clear if the selected port is no longer available
           setSelectedPort('');
@@ -366,9 +445,9 @@ function App() {
         // If port is still available, do nothing - preserve user's selection
         return;
       }
-      
+
       // Case 3: Fallback - if somehow we have a selected port but no user selection flag
-      if (currentSelectedPort && !availablePorts.some(p => p.port_name === currentSelectedPort)) {
+      if (currentSelectedPort && !availablePorts.some((p) => p.port_name === currentSelectedPort)) {
         setSelectedPort('');
       }
     } catch (error) {
@@ -380,14 +459,21 @@ function App() {
   useEffect(() => {
     loadPorts();
 
-    // Initialize log limit from localStorage
+    // Initialize log limit from localStorage (single source: 100–10000, S1-04)
     const initLogLimit = async () => {
-      const savedMaxLogLines = localStorage.getItem('uartis_maxLogLines');
+      const savedMaxLogLines = localStorage.getItem(STORAGE_KEY_MAX_LOG_LINES);
       if (savedMaxLogLines) {
-        try {
-          await invoke('set_log_limit', { limit: parseInt(savedMaxLogLines, 10) });
-        } catch (error) {
-          console.error('Failed to initialize log limit:', error);
+        const parsed = parseInt(savedMaxLogLines, 10);
+        if (!Number.isNaN(parsed)) {
+          const limit = clampLogLimit(parsed);
+          try {
+            await invoke('set_log_limit', { limit });
+            // The log hook may have read `get_log_limit` before this call
+            // landed; publish the effective limit so the buffer follows it.
+            window.dispatchEvent(new CustomEvent<number>(LOG_LIMIT_CHANGED_EVENT, { detail: limit }));
+          } catch (error) {
+            console.error('Failed to initialize log limit:', error);
+          }
         }
       }
     };
@@ -411,9 +497,10 @@ function App() {
     const initTimezoneOffset = async () => {
       try {
         const tz = loadTimezone();
-        const offsetMinutes = tz === 'System'
-          ? Math.round(getSystemTimezoneOffset() * 60)  // Convert hours to minutes
-          : Math.round(parseUtcOffset(tz) * 60);
+        const offsetMinutes =
+          tz === 'System'
+            ? Math.round(getSystemTimezoneOffset() * 60) // Convert hours to minutes
+            : Math.round(parseUtcOffset(tz) * 60);
         await invoke('set_timezone_offset', { offsetMinutes });
       } catch (error) {
         console.error('Failed to initialize timezone offset:', error);
@@ -435,26 +522,28 @@ function App() {
     };
   }, [loadPorts, eventPush]); // 依赖loadPorts函数
 
-  const handlePortSelect = (port: string) => {
+  const handlePortSelect = useCallback((port: string) => {
     setSelectedPort(port);
     setUserHasSelectedPort(true); // Mark that user has made a manual choice
-  };
+  }, []);
 
-  const updateStatus = async () => {
+  const updateStatus = useCallback(async () => {
     try {
       const status = await invoke<ConnectionStatus>('get_connection_status');
       // Surface an unexpected loss (fatal read error, e.g. cable unplugged)
       // exactly once per transition; manual disconnects carry no error.
-      setConnectionStatus((prev) => {
-        if (prev.is_connected && !status.is_connected && status.connection_error) {
-          toast.error(t('app.connectionLost').replace('{error}', status.connection_error));
-        }
-        return status;
-      });
+      // Side effects stay outside the state updater (and use tRef so the
+      // language switch is respected by the long-lived interval).
+      const previous = connectionStatusRef.current;
+      if (previous.is_connected && !status.is_connected && status.connection_error) {
+        toast.error(tRef.current('app.connectionLost').replace('{error}', status.connection_error));
+      }
+      connectionStatusRef.current = status;
+      setConnectionStatus((prev) => (isSameConnectionStatus(prev, status) ? prev : status));
     } catch (error) {
       console.error('Failed to get status:', error);
     }
-  };
+  }, []);
 
   const updateLogs = async () => {
     try {
@@ -465,9 +554,9 @@ function App() {
     }
   };
 
-  const handleConnect = async () => {
+  const handleConnect = useCallback(async () => {
     if (!selectedPort) return;
-    
+
     setIsLoading(true);
     try {
       await invoke('connect_to_port', {
@@ -477,13 +566,13 @@ function App() {
       await updateStatus();
     } catch (error) {
       console.error('Failed to connect:', error);
-      toast.error(`Failed to connect: ${error}`);
+      toast.error(tRef.current('app.connectFailed').replace('{error}', String(error)));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedPort, config, updateStatus]);
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = useCallback(async () => {
     setIsLoading(true);
     try {
       await invoke('disconnect_port');
@@ -494,72 +583,87 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [updateStatus]);
 
-  const handleSendData = async () => {
-    if (!sendText.trim() || !connectionStatus.is_connected) return;
+  /** Throttled send-failure toast: scheduled sends can fail every 10 ms. */
+  const notifySendError = useCallback((error: unknown) => {
+    const now = Date.now();
+    if (now - lastSendErrorToastRef.current < SEND_ERROR_TOAST_INTERVAL_MS) return;
+    lastSendErrorToastRef.current = now;
+    toast.error(tRef.current('sendPanel.sendFailed').replace('{error}', String(error)));
+  }, []);
 
-    try {
-      const textEncoding = getTextEncoding();
+  const handleSendData = useCallback(
+    async (lineEnding: LineEnding = 'None'): Promise<boolean> => {
+      if (!sendText.trim() || !connectionStatus.is_connected) return false;
 
-      // If checksum is enabled, we need to calculate and append it
-      if (checksumConfig.type !== 'None') {
-        // Convert input to bytes first
-        let bytes: Uint8Array;
-        if (sendFormat === 'Text') {
-          // For checksum calculation with text, we use UTF-8 encoding in frontend
-          // The actual encoding conversion happens in backend
-          bytes = new TextEncoder().encode(sendText);
-        } else {
-          // Parse hex string
-          const cleanHex = sendText.replace(/\s/g, '');
-          if (cleanHex.length % 2 !== 0) {
-            toast.warning('Hex string must have even number of characters');
-            return;
-          }
-          const byteArray: number[] = [];
-          for (let i = 0; i < cleanHex.length; i += 2) {
-            const byte = parseInt(cleanHex.substr(i, 2), 16);
-            if (isNaN(byte)) {
-              toast.warning('Invalid hex characters');
-              return;
+      try {
+        const textEncoding = getTextEncoding();
+        // Apply the outbound character map (line ending) before encoding and
+        // before the checksum, so the checksum covers exactly what is sent.
+        const payload = appendLineEnding(sendText, lineEnding, sendFormat === 'Hex');
+
+        // If checksum is enabled, we need to calculate and append it
+        if (checksumConfig.type !== 'None') {
+          // Convert input to bytes first. Text must use the *configured*
+          // encoding: the backend sends GBK bytes, so a UTF-8 checksum would
+          // not match what the device receives (S1-08).
+          let bytes: Uint8Array;
+          if (sendFormat === 'Text') {
+            bytes = await textToBytes(payload, textEncoding);
+          } else {
+            // Parse hex string
+            const cleanHex = payload.replace(/\s/g, '');
+            if (cleanHex.length % 2 !== 0) {
+              toast.warning(tRef.current('sendPanel.sendHexOddLength'));
+              return false;
             }
-            byteArray.push(byte);
+            const byteArray: number[] = [];
+            for (let i = 0; i < cleanHex.length; i += 2) {
+              const byte = parseInt(cleanHex.substr(i, 2), 16);
+              if (isNaN(byte)) {
+                toast.warning(tRef.current('sendPanel.sendHexInvalid'));
+                return false;
+              }
+              byteArray.push(byte);
+            }
+            bytes = new Uint8Array(byteArray);
           }
-          bytes = new Uint8Array(byteArray);
+
+          // Append checksum
+          const bytesWithChecksum = appendChecksum(bytes, checksumConfig);
+
+          // Convert back to hex string for sending (always send as hex when checksum is added)
+          const dataToSend = Array.from(bytesWithChecksum)
+            .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
+            .join(' ');
+
+          // Send as hex format when checksum is appended (encoding not needed for hex)
+          await invoke('send_data', {
+            data: dataToSend,
+            format: 'Hex',
+          });
+        } else {
+          // No checksum, send as-is with encoding
+          await invoke('send_data', {
+            data: payload,
+            format: sendFormat,
+            encoding: sendFormat === 'Text' ? textEncoding : undefined,
+          });
         }
 
-        // Append checksum
-        const bytesWithChecksum = appendChecksum(bytes, checksumConfig);
-
-        // Convert back to hex string for sending (always send as hex when checksum is added)
-        const dataToSend = Array.from(bytesWithChecksum)
-          .map(b => b.toString(16).padStart(2, '0').toUpperCase())
-          .join(' ');
-
-        // Send as hex format when checksum is appended (encoding not needed for hex)
-        await invoke('send_data', {
-          data: dataToSend,
-          format: 'Hex',
-        });
-      } else {
-        // No checksum, send as-is with encoding
-        await invoke('send_data', {
-          data: sendText,
-          format: sendFormat,
-          encoding: sendFormat === 'Text' ? textEncoding : undefined,
-        });
+        // Don't clear the input - keep the content for re-sending
+        return true;
+      } catch (error) {
+        console.error('Failed to send data:', error);
+        notifySendError(error);
+        return false;
       }
+    },
+    [sendText, sendFormat, checksumConfig, connectionStatus.is_connected, notifySendError]
+  );
 
-      // Don't clear the input - keep the content for re-sending
-      // Note: Logs are updated automatically via polling interval, no need to await here
-    } catch (error) {
-      console.error('Failed to send data:', error);
-      toast.error(`Failed to send data: ${error}`);
-    }
-  };
-
-  const handleClearLogs = async () => {
+  const handleClearLogs = useCallback(async () => {
     if (eventPush) {
       await clearPushedLogs();
       return;
@@ -570,54 +674,51 @@ function App() {
     } catch (error) {
       console.error('Failed to clear logs:', error);
     }
-  };
+  }, [eventPush, clearPushedLogs]);
 
-  const handleExportLogs = async () => {
-    try {
-      // Get the log directory from backend (which has the correct platform-specific path)
-      const logPath = await invoke<string>('get_log_directory');
+  const handleExportLogs = useCallback(
+    async (format: ExportFormat) => {
+      try {
+        // Get the log directory from backend (which has the correct platform-specific path)
+        const logPath = await invoke<string>('get_log_directory');
 
-      // Format timestamp for filename using configured timezone
-      const timezone = loadTimezone();
-      const timestamp = formatDateForFilename(new Date(), timezone);
+        // Format timestamp for filename using configured timezone
+        const timezone = loadTimezone();
+        const timestamp = formatDateForFilename(new Date(), timezone);
 
-      // Use "noport" if no port is connected, otherwise use the selected port name
-      // Sanitize port name for filename (replace special characters)
-      const portName = (selectedPort || 'noport').replace(/[\/\\:*?"<>|]/g, '_');
+        // Use "noport" if no port is connected, otherwise use the selected port name
+        // Sanitize port name for filename (replace special characters)
+        const portName = (selectedPort || 'noport').replace(/[/\\:*?"<>|]/g, '_');
+        const extension = format === 'Txt' ? 'txt' : format === 'Csv' ? 'csv' : 'json';
 
-      // Use "export_" prefix to distinguish from auto-saved files
-      const filename = `export_${portName}_${timestamp}.txt`;
+        // Use "export_" prefix to distinguish from auto-saved files
+        const defaultPath = `${logPath}/export_${portName}_${timestamp}.${extension}`;
 
-      // Construct full path
-      const fullPath = `${logPath}/${filename}`;
+        // Let the user pick (and see) the target file — the old behaviour wrote
+        // silently into the log directory and only showed the path in a toast.
+        const filePath = await saveFileDialog({
+          defaultPath,
+          filters: [{ name: format.toUpperCase(), extensions: [extension] }],
+        });
+        if (!filePath) return; // user cancelled
 
-      // Pass timezone offset to backend for formatting timestamps in the exported file
-      await invoke('export_logs', {
-        filePath: fullPath,
-        format: 'Txt',
-        timezoneOffsetMinutes: timezone === 'System' ? -new Date().getTimezoneOffset() : getTimezoneOffsetMinutes(timezone),
-      });
+        // Pass timezone offset to backend for formatting timestamps in the exported file
+        const timezoneOffsetMinutes =
+          timezone === 'System' ? -new Date().getTimezoneOffset() : Math.round(parseUtcOffset(timezone) * 60);
+        await invoke('export_logs', {
+          filePath,
+          format,
+          timezoneOffsetMinutes,
+        });
 
-      toast.success(`Logs exported to ${fullPath}`);
-    } catch (error) {
-      console.error('Failed to export logs:', error);
-      toast.error(`Failed to export logs: ${error}`);
-    }
-  };
-
-  // Helper function to convert timezone string to offset in minutes
-  const getTimezoneOffsetMinutes = (timezone: string): number => {
-    if (timezone === 'UTC') return 0;
-
-    const match = timezone.match(/^UTC([+-])(\d{1,2})(?::(\d{2}))?$/);
-    if (!match) return 0;
-
-    const sign = match[1] === '+' ? 1 : -1;
-    const hours = parseInt(match[2], 10);
-    const minutes = match[3] ? parseInt(match[3], 10) : 0;
-
-    return sign * (hours * 60 + minutes);
-  };
+        toast.success(tRef.current('logViewer.exportSuccess').replace('{path}', filePath));
+      } catch (error) {
+        console.error('Failed to export logs:', error);
+        toast.error(tRef.current('logViewer.exportFailed').replace('{error}', String(error)));
+      }
+    },
+    [selectedPort]
+  );
 
   // Helper function to append line ending to data
   const appendLineEnding = (data: string, lineEnding: LineEnding, isHex: boolean): string => {
@@ -639,54 +740,56 @@ function App() {
   };
 
   // Handler for sending a single quick command
-  const handleSendQuickCommand = async (content: string, isHex: boolean, lineEnding: LineEnding) => {
-    if (!content.trim() || !connectionStatus.is_connected) return;
+  const handleSendQuickCommand = useCallback(
+    async (content: string, isHex: boolean, lineEnding: LineEnding) => {
+      if (!content.trim() || !connectionStatus.is_connected) return;
 
-    try {
-      const dataToSend = appendLineEnding(content, lineEnding, isHex);
-      const format: DataFormat = isHex ? 'Hex' : 'Text';
-      const textEncoding = getTextEncoding();
-
-      await invoke('send_data', {
-        data: dataToSend,
-        format: format,
-        encoding: !isHex ? textEncoding : undefined,
-      });
-
-      // Note: Logs are updated automatically via polling interval
-    } catch (error) {
-      console.error('Failed to send quick command:', error);
-      toast.error(`Failed to send: ${error}`);
-    }
-  };
-
-  // Handler for sending all selected quick commands
-  const handleSendSelectedQuickCommands = async (commands: QuickCommand[]) => {
-    if (commands.length === 0 || !connectionStatus.is_connected) return;
-
-    try {
-      const textEncoding = getTextEncoding();
-
-      for (const command of commands) {
-        const dataToSend = appendLineEnding(command.content, command.lineEnding, command.isHex);
-        const format: DataFormat = command.isHex ? 'Hex' : 'Text';
+      try {
+        const dataToSend = appendLineEnding(content, lineEnding, isHex);
+        const format: DataFormat = isHex ? 'Hex' : 'Text';
+        const textEncoding = getTextEncoding();
 
         await invoke('send_data', {
           data: dataToSend,
           format: format,
-          encoding: !command.isHex ? textEncoding : undefined,
+          encoding: !isHex ? textEncoding : undefined,
         });
-
-        // Small delay between commands to ensure proper sequencing
-        await new Promise(resolve => setTimeout(resolve, 50));
+      } catch (error) {
+        console.error('Failed to send quick command:', error);
+        notifySendError(error);
       }
+    },
+    [connectionStatus.is_connected, notifySendError]
+  );
 
-      // Note: Logs are updated automatically via polling interval
-    } catch (error) {
-      console.error('Failed to send selected commands:', error);
-      toast.error(`Failed to send: ${error}`);
-    }
-  };
+  // Handler for sending all selected quick commands
+  const handleSendSelectedQuickCommands = useCallback(
+    async (commands: QuickCommand[]) => {
+      if (commands.length === 0 || !connectionStatus.is_connected) return;
+
+      try {
+        const textEncoding = getTextEncoding();
+
+        for (const command of commands) {
+          const dataToSend = appendLineEnding(command.content, command.lineEnding, command.isHex);
+          const format: DataFormat = command.isHex ? 'Hex' : 'Text';
+
+          await invoke('send_data', {
+            data: dataToSend,
+            format: format,
+            encoding: !command.isHex ? textEncoding : undefined,
+          });
+
+          // Small delay between commands to ensure proper sequencing
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      } catch (error) {
+        console.error('Failed to send selected commands:', error);
+        notifySendError(error);
+      }
+    },
+    [connectionStatus.is_connected, notifySendError]
+  );
 
   return (
     <div className="h-screen flex flex-col" style={{ backgroundColor: colors.bgMain, color: colors.textPrimary }}>
@@ -700,7 +803,7 @@ function App() {
             minWidth: effectiveSidebarWidth,
             backgroundColor: colors.bgSidebar,
             borderRight: `1px solid ${colors.borderDark}`,
-            backdropFilter: 'blur(20px)'
+            backdropFilter: 'blur(20px)',
           }}
         >
           {/* Collapsed Sidebar View */}
@@ -728,10 +831,17 @@ function App() {
           ) : (
             <>
               {/* Header */}
-              <div className="p-4 pt-6 flex items-start justify-between" style={{ borderBottom: `1px solid ${colors.borderLight}` }}>
+              <div
+                className="p-4 pt-6 flex items-start justify-between"
+                style={{ borderBottom: `1px solid ${colors.borderLight}` }}
+              >
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-base font-bold tracking-wide truncate" style={{ color: colors.textPrimary }}>{t('app.title')}</h1>
-                  <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>{t('app.subtitle')}</p>
+                  <h1 className="text-base font-bold tracking-wide truncate" style={{ color: colors.textPrimary }}>
+                    {t('app.title')}
+                  </h1>
+                  <p className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                    {t('app.subtitle')}
+                  </p>
                 </div>
                 <div className="flex items-center gap-1 ml-2">
                   <TooltipProvider>
@@ -789,11 +899,7 @@ function App() {
 
               {/* Configuration */}
               <div className="flex-1 overflow-y-auto scrollbar-thin">
-                <ConfigPanel
-                  config={config}
-                  onChange={setConfig}
-                  disabled={connectionStatus.is_connected}
-                />
+                <ConfigPanel config={config} onChange={setConfig} disabled={connectionStatus.is_connected} />
               </div>
             </>
           )}
@@ -836,6 +942,7 @@ function App() {
               logs={logs}
               onClear={handleClearLogs}
               onExport={handleExportLogs}
+              onResync={eventPush ? resyncPushedLogs : undefined}
               isConnected={connectionStatus.is_connected}
             />
           </div>
@@ -890,11 +997,7 @@ function App() {
       </div>
 
       {/* Status Bar */}
-      <StatusBar
-        connectionStatus={connectionStatus}
-        selectedPort={selectedPort}
-        config={config}
-      />
+      <StatusBar connectionStatus={connectionStatus} selectedPort={selectedPort} config={config} />
 
       {/* Settings Modal */}
       <SettingsModal open={showSettings} onOpenChange={setShowSettings} />

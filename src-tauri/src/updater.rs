@@ -3,10 +3,11 @@
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
@@ -189,10 +190,10 @@ pub async fn check_for_updates(current_version: &str) -> Result<UpdateCheckResul
     let latest_version = strip_version_prefix(&release.tag_name).to_string();
     let current = strip_version_prefix(current_version);
 
-    let has_update = match compare_versions(&latest_version, current) {
-        Some(Ordering::Greater) => true,
-        _ => false,
-    };
+    let has_update = matches!(
+        compare_versions(&latest_version, current),
+        Some(Ordering::Greater)
+    );
 
     let asset = find_platform_asset(&release.assets, current_platform());
 
@@ -207,16 +208,139 @@ pub async fn check_for_updates(current_version: &str) -> Result<UpdateCheckResul
     })
 }
 
+/// Validate an update download URL: only HTTPS on GitHub release hosts.
+pub(crate) fn validate_download_url(url: &str) -> Result<(), String> {
+    let rest = url
+        .strip_prefix("https://")
+        .ok_or_else(|| format!("Refusing non-HTTPS update URL: {url}"))?;
+    let host = rest
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let allowed = host == "github.com"
+        || host.ends_with(".github.com")
+        || host == "githubusercontent.com"
+        || host.ends_with(".githubusercontent.com");
+    if !allowed {
+        return Err(format!(
+            "Refusing update download from untrusted host: {host}"
+        ));
+    }
+    Ok(())
+}
+
+/// Reduce a release asset name to a safe file name in the update cache.
+///
+/// `asset_name` comes from the webview (and originally from the GitHub API),
+/// so a crafted value such as `..\..\evil.exe` or an absolute path must never
+/// escape the update directory (audit S-02).
+pub(crate) fn sanitize_asset_name(asset_name: &str) -> Result<String, String> {
+    // Reject separators/drive markers explicitly instead of relying on the
+    // host `Path` semantics: on macOS/Linux `\` is an ordinary filename byte,
+    // so `..\..\evil.exe` would otherwise be accepted there while rejected
+    // on Windows (this made the unit test platform-dependent).
+    if asset_name.is_empty()
+        || asset_name == "."
+        || asset_name == ".."
+        || asset_name
+            .bytes()
+            .any(|byte| matches!(byte, b'/' | b'\\' | b':' | 0))
+    {
+        return Err(format!(
+            "Refusing update asset name with path components: {asset_name}"
+        ));
+    }
+    let path = Path::new(asset_name);
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("Invalid update asset name: {asset_name}"))?;
+    if file_name != asset_name {
+        return Err(format!(
+            "Refusing update asset name with path components: {asset_name}"
+        ));
+    }
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("exe") | Some("msi") | Some("dmg") | Some("pkg") => Ok(file_name.to_string()),
+        _ => Err(format!(
+            "Refusing update asset with unsupported extension: {asset_name}"
+        )),
+    }
+}
+
+/// Locate the release's `SHA256SUMS.txt` next to the asset download URL.
+pub(crate) fn derive_checksums_url(download_url: &str) -> Option<String> {
+    let (base, _asset) = download_url.rsplit_once('/')?;
+    if base.is_empty() {
+        return None;
+    }
+    Some(format!("{base}/SHA256SUMS.txt"))
+}
+
+/// Parse a `sha256sum`-style checksum file and return the hash for `asset`.
+/// Accepts both `hash  name` and `hash *name` (binary mode) formats.
+pub(crate) fn find_checksum(sums: &str, asset: &str) -> Option<String> {
+    for line in sums.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let Some(hash) = parts.next() else { continue };
+        let Some(name) = parts.next() else { continue };
+        let name = name.trim_start_matches('*');
+        if name != asset {
+            continue;
+        }
+        if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(hash.to_ascii_lowercase());
+        }
+        return None;
+    }
+    None
+}
+
 /// Download update to temp directory with progress reporting
 pub async fn download_update(
     app_handle: &AppHandle,
     download_url: &str,
     asset_name: &str,
 ) -> Result<PathBuf, String> {
+    validate_download_url(download_url)?;
+    let safe_name = sanitize_asset_name(asset_name)?;
+
     let client = Client::builder()
         .user_agent(USER_AGENT)
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    // Integrity: fetch the release's checksum manifest before downloading the
+    // installer, and verify the streamed bytes against it (audit S-01).
+    let checksums_url = derive_checksums_url(download_url)
+        .ok_or_else(|| "Cannot derive update checksum URL".to_string())?;
+    validate_download_url(&checksums_url)?;
+    let checksums_response = client
+        .get(&checksums_url)
+        .send()
+        .await
+        .map_err(|e| format!("Checksum download failed: {}", e))?;
+    if !checksums_response.status().is_success() {
+        return Err(format!(
+            "Update checksum unavailable (HTTP {}); refusing to install",
+            checksums_response.status()
+        ));
+    }
+    let checksums_text = checksums_response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read checksum file: {}", e))?;
+    let expected_checksum = find_checksum(&checksums_text, &safe_name)
+        .ok_or_else(|| format!("SHA256SUMS.txt does not contain a checksum for {safe_name}"))?;
 
     let response = client
         .get(download_url)
@@ -231,13 +355,18 @@ pub async fn download_update(
     let total_size = response.content_length().unwrap_or(0);
 
     // Create temp directory path
-    let temp_dir = std::env::temp_dir();
-    let file_path = temp_dir.join(asset_name);
+    // Keep every download in a dedicated cache directory; the sanitized file
+    // name cannot contain separators, so it cannot escape this directory.
+    let update_dir = std::env::temp_dir().join("uartis-updates");
+    std::fs::create_dir_all(&update_dir)
+        .map_err(|e| format!("Failed to create update cache dir: {}", e))?;
+    let file_path = update_dir.join(&safe_name);
 
-    let mut file = File::create(&file_path)
-        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+    let mut file =
+        File::create(&file_path).map_err(|e| format!("Failed to create temp file: {}", e))?;
 
     let mut downloaded: u64 = 0;
+    let mut hasher = Sha256::new();
     let mut stream = response.bytes_stream();
     let mut last_emitted_percentage: u8 = 0;
 
@@ -245,6 +374,7 @@ pub async fn download_update(
         let chunk = chunk_result.map_err(|e| format!("Download error: {}", e))?;
         file.write_all(&chunk)
             .map_err(|e| format!("Failed to write to file: {}", e))?;
+        hasher.update(&chunk);
 
         downloaded += chunk.len() as u64;
 
@@ -257,20 +387,35 @@ pub async fn download_update(
         // Emit progress event every 1%
         if percentage > last_emitted_percentage {
             last_emitted_percentage = percentage;
-            let _ = app_handle.emit("update-download-progress", DownloadProgress {
-                downloaded,
-                total: total_size,
-                percentage,
-            });
+            let _ = app_handle.emit(
+                "update-download-progress",
+                DownloadProgress {
+                    downloaded,
+                    total: total_size,
+                    percentage,
+                },
+            );
         }
     }
 
     // Emit 100% completion
-    let _ = app_handle.emit("update-download-progress", DownloadProgress {
-        downloaded,
-        total: total_size,
-        percentage: 100,
-    });
+    let _ = app_handle.emit(
+        "update-download-progress",
+        DownloadProgress {
+            downloaded,
+            total: total_size,
+            percentage: 100,
+        },
+    );
+
+    let actual_checksum = format!("{:x}", hasher.finalize());
+    if actual_checksum != expected_checksum {
+        drop(file);
+        let _ = std::fs::remove_file(&file_path);
+        return Err(format!(
+            "Update checksum mismatch: expected {expected_checksum}, got {actual_checksum}"
+        ));
+    }
 
     Ok(file_path)
 }
@@ -298,7 +443,10 @@ fn launch_inner(installer_path: &str) -> Result<(), String> {
                 .stderr(std::process::Stdio::null())
                 .spawn();
             if let Err(e) = spawn_result {
-                log::warn!("Failed to spawn update trampoline ({}); opening dmg instead", e);
+                log::warn!(
+                    "Failed to spawn update trampoline ({}); opening dmg instead",
+                    e
+                );
                 let _ = Command::new("open").arg(installer_path).spawn();
             }
         }
@@ -312,13 +460,14 @@ fn launch_inner(installer_path: &str) -> Result<(), String> {
 
 #[cfg(not(target_os = "macos"))]
 fn launch_inner(installer_path: &str) -> Result<(), String> {
-    let mut command = if cfg!(target_os = "linux") && !installer_path.to_lowercase().ends_with(".appimage") {
-        let mut cmd = Command::new("xdg-open");
-        cmd.arg(installer_path);
-        cmd
-    } else {
-        Command::new(installer_path)
-    };
+    let mut command =
+        if cfg!(target_os = "linux") && !installer_path.to_lowercase().ends_with(".appimage") {
+            let mut cmd = Command::new("xdg-open");
+            cmd.arg(installer_path);
+            cmd
+        } else {
+            Command::new(installer_path)
+        };
 
     command
         .spawn()
@@ -332,6 +481,9 @@ fn launch_inner(installer_path: &str) -> Result<(), String> {
 /// Extract the enclosing `.app` bundle path from an executable path, e.g.
 /// `/Applications/Foo.app/Contents/MacOS/foo` → `/Applications/Foo.app`.
 /// Returns None when the binary is not inside a bundle (dev runs, tests).
+// Only the macOS in-place update (and its unit tests) needs these helpers; on
+// other targets they would be dead code (clippy::dead_code under -D warnings).
+#[cfg(any(target_os = "macos", test))]
 fn bundle_path_from_exe(exe: &std::path::Path) -> Option<PathBuf> {
     exe.ancestors()
         .find(|p| p.extension().is_some_and(|e| e == "app"))
@@ -341,20 +493,23 @@ fn bundle_path_from_exe(exe: &std::path::Path) -> Option<PathBuf> {
 /// Parse the mount point from `hdiutil attach` text output: the field
 /// starting with "/Volumes/" on the last line that has one. Mount points
 /// may contain spaces, so everything from that marker to EOL is kept.
+#[cfg(any(target_os = "macos", test))]
 fn parse_hdiutil_mount_point(output: &str) -> Option<String> {
-    output.lines().rev().find_map(|line| {
-        line.find("/Volumes/")
-            .map(|i| line[i..].trim().to_string())
-    })
+    output
+        .lines()
+        .rev()
+        .find_map(|line| line.find("/Volumes/").map(|i| line[i..].trim().to_string()))
 }
 
 /// Single-quote a value for POSIX shell (`a'b` → `'a'\''b'`).
+#[cfg(any(target_os = "macos", test))]
 fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 /// Render the trampoline shell script. Kept as a pure function so the exact
 /// swap sequence is unit-testable without touching hdiutil/ditto.
+#[cfg(any(target_os = "macos", test))]
 fn render_trampoline_script(
     pid: u32,
     mount: &str,
@@ -468,7 +623,8 @@ fn prepare_inplace_script(dmg_path: &std::path::Path) -> Result<PathBuf, String>
         }
     };
 
-    let script = render_trampoline_script(std::process::id(), &mount, &app_in_dmg, &bundle, dmg_path);
+    let script =
+        render_trampoline_script(std::process::id(), &mount, &app_in_dmg, &bundle, dmg_path);
     let script_path = std::env::temp_dir().join(format!("uartis-update-{}.sh", std::process::id()));
     std::fs::write(&script_path, script).map_err(|e| format!("Cannot write trampoline: {}", e))?;
     Ok(script_path)
@@ -479,9 +635,10 @@ fn prepare_inplace_script(dmg_path: &std::path::Path) -> Result<PathBuf, String>
 /// Plain `<a target="_blank">` is a no-op inside the Tauri webview, so the
 /// frontend hands external links here instead of using the shell plugin.
 pub fn open_url(url: &str) -> Result<(), String> {
-    // Cheap sanity check: only web URLs may be handed to the OS opener.
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err(format!("Refusing to open non-http(s) URL: {}", url));
+    // Only HTTPS may be handed to the OS opener; plain HTTP is MITM-able and
+    // `file:`/`javascript:` must never reach the shell (audit S-06).
+    if !url.starts_with("https://") {
+        return Err(format!("Refusing to open non-HTTPS URL: {}", url));
     }
 
     let status = if cfg!(target_os = "macos") {
@@ -526,7 +683,60 @@ mod tests {
     fn open_url_rejects_non_http_schemes() {
         assert!(open_url("file:///etc/passwd").is_err());
         assert!(open_url("javascript:alert(1)").is_err());
+        assert!(open_url("http://example.com").is_err());
         assert!(open_url("").is_err());
+    }
+
+    #[test]
+    fn asset_name_must_be_a_plain_installer_file() {
+        assert_eq!(
+            sanitize_asset_name("Uartis_1.1.0_x64-setup.exe").unwrap(),
+            "Uartis_1.1.0_x64-setup.exe"
+        );
+        assert_eq!(
+            sanitize_asset_name("Uartis_1.1.0_aarch64.dmg").unwrap(),
+            "Uartis_1.1.0_aarch64.dmg"
+        );
+        assert!(sanitize_asset_name("..\\..\\evil.exe").is_err());
+        assert!(sanitize_asset_name("../evil.dmg").is_err());
+        assert!(sanitize_asset_name("C:\\temp\\evil.exe").is_err());
+        assert!(sanitize_asset_name("evil.sh").is_err());
+        assert!(sanitize_asset_name("").is_err());
+    }
+
+    #[test]
+    fn download_url_must_be_https_github() {
+        assert!(validate_download_url(
+            "https://github.com/sourcexex/uartis/releases/download/V1.1.0/a.exe"
+        )
+        .is_ok());
+        assert!(validate_download_url("https://objects.githubusercontent.com/x/y").is_ok());
+        assert!(validate_download_url("http://github.com/a.exe").is_err());
+        assert!(validate_download_url("https://evil.example.com/a.exe").is_err());
+        assert!(validate_download_url("https://github.com.evil.example/a.exe").is_err());
+    }
+
+    #[test]
+    fn checksum_manifest_is_parsed_and_located() {
+        let sums = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  Uartis_1.1.0_x64-setup.exe\n\
+                    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa *Uartis_1.1.0_aarch64.dmg\n";
+        assert_eq!(
+            find_checksum(sums, "Uartis_1.1.0_x64-setup.exe").as_deref(),
+            Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+        );
+        assert_eq!(
+            find_checksum(sums, "Uartis_1.1.0_aarch64.dmg").as_deref(),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        assert!(find_checksum(sums, "other.exe").is_none());
+        assert!(find_checksum(sums, "Uartis_1.1.0_x64-setup.exe").is_some());
+        assert_eq!(
+            derive_checksums_url(
+                "https://github.com/sourcexex/uartis/releases/download/V1.1.0/Uartis_1.1.0_x64-setup.exe"
+            )
+            .as_deref(),
+            Some("https://github.com/sourcexex/uartis/releases/download/V1.1.0/SHA256SUMS.txt")
+        );
     }
 
     #[test]

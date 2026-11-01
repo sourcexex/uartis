@@ -9,7 +9,7 @@ interface Translations {
 }
 
 const translations: Record<Language, Translations> = {
-  'en': en,
+  en: en,
   'zh-CN': zhCN,
 };
 
@@ -64,11 +64,7 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     return result;
   };
 
-  return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
-      {children}
-    </LanguageContext.Provider>
-  );
+  return <LanguageContext.Provider value={{ language, setLanguage, t }}>{children}</LanguageContext.Provider>;
 };
 
 export const useLanguage = (): LanguageContextType => {

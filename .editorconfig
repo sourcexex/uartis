@@ -1,0 +1,24 @@
+# Uartis editor defaults (https://editorconfig.org)
+# Keep this minimal: formatting is enforced by rustfmt / prettier (S0-04).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.rs]
+indent_size = 4
+
+[*.{md,markdown}]
+# Trailing spaces are meaningful in Markdown (hard line break).
+trim_trailing_whitespace = false
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab

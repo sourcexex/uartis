@@ -1,0 +1,10 @@
+# Rust toolchain for Uartis.
+#
+# `stable` is intentional: CI (dtolnay/rust-toolchain@stable) and local builds
+# use the same channel. The minimum supported Rust version is dictated by the
+# dependency graph (tauri 2.12 currently requires 1.90+), so do not lower this.
+# rustfmt/clippy are listed here so `cargo fmt --check` / `cargo clippy` work
+# out of the box for every contributor.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

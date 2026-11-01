@@ -120,6 +120,15 @@ impl FrameSegmenter {
         &self.buffer
     }
 
+    /// Number of bytes currently pending (received but not yet framed).
+    ///
+    /// Used by the reader thread to shorten its poll interval while a partial
+    /// frame is buffered, so the idle flush is not delayed by a long
+    /// configured read timeout (audit B-07).
+    pub fn pending_len(&self) -> usize {
+        self.buffer.len()
+    }
+
     /// Drain any buffered bytes as a final frame regardless of idle time.
     /// Used when the reader is shutting down or dying so the tail of the
     /// stream is not silently dropped (RFC #3 Step 3).
@@ -309,8 +318,7 @@ mod tests {
     #[test]
     fn hard_cap_cuts_continuous_stream_without_waiting_for_idle() {
         let t0 = Instant::now();
-        let mut seg =
-            FrameSegmenter::with_max_frame_bytes(timeout_mode(), t0, 1024);
+        let mut seg = FrameSegmenter::with_max_frame_bytes(timeout_mode(), t0, 1024);
         // 2500 bytes with no idle gap: two full chunks cut immediately,
         // residue waits for the timeout flush.
         let frames = seg.feed(&vec![b'x'; 2500], t0);
@@ -326,11 +334,7 @@ mod tests {
     #[test]
     fn delimiter_within_cap_window_wins_over_hard_cut() {
         let t0 = Instant::now();
-        let mut seg = FrameSegmenter::with_max_frame_bytes(
-            combined(FrameDelimiter::LF),
-            t0,
-            8,
-        );
+        let mut seg = FrameSegmenter::with_max_frame_bytes(combined(FrameDelimiter::LF), t0, 8);
         // LF inside the first 8 bytes closes a short frame; rest pends.
         let frames = seg.feed(b"ab\ncdefgh", t0);
         assert_eq!(frames, vec![b"ab\n".to_vec()]);
@@ -340,11 +344,7 @@ mod tests {
     #[test]
     fn delimiter_beyond_cap_window_gets_hard_cut() {
         let t0 = Instant::now();
-        let mut seg = FrameSegmenter::with_max_frame_bytes(
-            combined(FrameDelimiter::LF),
-            t0,
-            8,
-        );
+        let mut seg = FrameSegmenter::with_max_frame_bytes(combined(FrameDelimiter::LF), t0, 8);
         // LF at position 8 is outside the 8-byte window: hard cut first,
         // then the lone LF frames on its own (cap-boundary split, pinned).
         let frames = seg.feed(b"abcdefgh\n", t0);

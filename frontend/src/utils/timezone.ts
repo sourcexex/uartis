@@ -93,10 +93,7 @@ export const parseUtcOffset = (offset: string): number => {
 /**
  * Format a timestamp with the specified timezone
  */
-export const formatTimestampWithTimezone = (
-  timestamp: string,
-  timezone: TimezoneOption
-): string => {
+export const formatTimestampWithTimezone = (timestamp: string, timezone: TimezoneOption): string => {
   const date = new Date(timestamp);
 
   if (timezone === 'System') {
@@ -127,10 +124,7 @@ export const formatTimestampWithTimezone = (
 /**
  * Format a date for filenames with the specified timezone
  */
-export const formatDateForFilename = (
-  date: Date,
-  timezone: TimezoneOption
-): string => {
+export const formatDateForFilename = (date: Date, timezone: TimezoneOption): string => {
   let targetDate: Date;
 
   if (timezone === 'System') {
