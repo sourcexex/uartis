@@ -211,7 +211,12 @@
     "reduceTransparency": "减少透明",
     "reduceTransparencyDesc": "使用纯色表面代替毛玻璃效果",
     "highContrast": "高对比模式",
-    "highContrastDesc": "增强边框、使用实底表面并提高文字对比度"
+    "highContrastDesc": "增强边框、使用实底表面并提高文字对比度",
+    "frameModeTimeout": "超时",
+    "frameModeCombined": "组合",
+    "frameTimeoutLabel": "超时",
+    "frameTimeoutRange": "毫秒（10-1000）",
+    "customDelimiterPlaceholder": "例如：0D 0A 或 1B5D"
   },
   "common": {
     "text": "文本",
