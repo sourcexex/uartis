@@ -237,6 +237,35 @@
   [data-theme='light'] textarea {
     caret-color: #1d1d1f;
   }
+
+  @media (prefers-contrast: more) {
+    :root,
+    [data-theme='light'] {
+      --app-glass-bg: var(--app-bg-surface);
+      --app-glass-bg-strong: var(--app-bg-surface);
+      --app-glass-border: var(--app-text-secondary);
+      --app-glass-blur: 0px;
+      --app-glass-saturate: 100%;
+    }
+
+    .glass-surface,
+    .glass-surface-strong {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      box-shadow: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer components {

@@ -40,7 +40,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[420px]">
+      <DialogContent className="max-w-[420px]" glass>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             {danger && <AlertTriangle size={16} className="text-destructive shrink-0" />}
