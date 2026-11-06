@@ -212,3 +212,13 @@
 - 基线：Vite CSS 44.14 kB / gzip 8.14 kB；JS gzip 145.40 kB；冷启动到窗口 190/77/71 ms（首次/缓存后两次，Windows 150% DPI）。
 - 未做：1000 行滚动/窗口拖动/缩放 FPS 实测、WebKitGTK 实机冒烟、亮/暗/高对比三套截图；见 `docs/UI-PERF-NOTES.zh-CN.md`。
 
+
+
+### V6 验收（Windows 初验，2026-11-06）
+
+- 840×560 初测发现：侧栏未折叠导致日志工具条竖排/裁切；窗口变矮后持久化日志高度未重新 clamp，发送区被挤出屏幕。
+- 修复：自动折叠阈值 640 → 900；日志工具条 `flex-wrap`；窗口 `resize` 时按 `mainContentHeight - sendPanelMinHeight` 重新 clamp 日志高度。
+- 复验：最小尺寸下侧栏折叠、工具条两行内可读、发送区完整；截图 `assets/ui-v6-min-windows.png`，详见 [`UI-V6-ACCEPTANCE.zh-CN.md`](UI-V6-ACCEPTANCE.zh-CN.md)。
+- 验证：tsc / ESLint / Prettier / Vitest（12）/ Vite build / Tauri NSIS。
+- 未完成：亮色/高对比截图、完整键盘/屏幕阅读器、FPS 量化、macOS/Linux 实机、v1.2 版本与发布准备。
+

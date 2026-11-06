@@ -626,7 +626,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
         style={{ backgroundColor: colors.bgHeader, borderBottom: `1px solid ${colors.borderDark}` }}
       >
         {/* Row 1 */}
-        <div className="h-9 px-4 flex items-center justify-between">
+        <div className="min-h-9 px-4 py-1 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2" style={{ color: colors.textSecondary }}>
             <Terminal size={16} style={{ color: colors.textTertiary }} />
             <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>
@@ -638,7 +638,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
           </div>
 
           <div
-            className="flex rounded-md p-0.5 border"
+            className="flex flex-wrap items-center gap-0.5 rounded-md p-0.5 border"
             style={{ backgroundColor: colors.bgInput, borderColor: colors.borderLight }}
           >
             <Button variant="ghost" size="xs" className="h-6 text-xs gap-1" onClick={openSearch}>
@@ -701,10 +701,10 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
 
         {/* Row 2 */}
         <div
-          className="h-8 px-4 flex items-center justify-between"
+          className="min-h-8 px-4 py-1 flex flex-wrap items-center justify-between gap-2"
           style={{ borderTop: `1px solid ${colors.borderLight}` }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Format Select */}
             <div className="flex items-center gap-1.5">
               <span className="text-xs" style={{ color: colors.textTertiary }}>
@@ -761,7 +761,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
           </div>
 
           {/* Recording Checkboxes */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
