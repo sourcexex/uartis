@@ -20,13 +20,7 @@
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
-        "alwaysOnTop": false,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "trafficLightPosition": {
-          "x": 16,
-          "y": 15
-        }
+        "alwaysOnTop": false
       }
     ],
     "security": {
