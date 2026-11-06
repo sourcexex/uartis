@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { themeColors } from '../theme/tokens';
 import type { ThemeColors } from '../theme/tokens';
 import { prefersReducedTransparency, resolveReducedTransparency, supportsBackdropFilter } from '../utils/glass';
+import { contrastText } from '../utils/color';
 
 export type { ThemeColors } from '../theme/tokens';
 
@@ -9,6 +10,7 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
 export type AccentColor = 'blue' | 'green' | 'purple' | 'orange';
 export type GlassStrength = 'soft' | 'standard' | 'strong';
+export type ConsoleBackground = 'theme' | 'navy' | 'forest' | 'plum' | 'warm' | 'black' | 'custom';
 
 interface ThemeContextType {
   themeMode: ThemeMode;
@@ -25,6 +27,12 @@ interface ThemeContextType {
   setHighContrast: (enabled: boolean) => void;
   reducedMotion: boolean;
   setReducedMotion: (enabled: boolean) => void;
+  consoleBackground: ConsoleBackground;
+  setConsoleBackground: (background: ConsoleBackground) => void;
+  consoleCustomColor: string;
+  setConsoleCustomColor: (color: string) => void;
+  consoleFontSize: number;
+  setConsoleFontSize: (size: number) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -32,6 +40,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 const THEME_KEYS: ThemeMode[] = ['light', 'dark', 'system'];
 const ACCENT_KEYS: AccentColor[] = ['blue', 'green', 'purple', 'orange'];
 const GLASS_KEYS: GlassStrength[] = ['soft', 'standard', 'strong'];
+const CONSOLE_KEYS: ConsoleBackground[] = ['theme', 'navy', 'forest', 'plum', 'warm', 'black', 'custom'];
 
 function readStoredTheme(): ThemeMode {
   const stored = localStorage.getItem('uartis_theme') as ThemeMode | null;
@@ -46,6 +55,20 @@ function readStoredAccent(): AccentColor {
 function readStoredGlassStrength(): GlassStrength {
   const stored = localStorage.getItem('uartis_glass_strength') as GlassStrength | null;
   return stored && GLASS_KEYS.includes(stored) ? stored : 'standard';
+}
+
+function readStoredConsoleBackground(): ConsoleBackground {
+  const stored = localStorage.getItem('uartis_console_bg') as ConsoleBackground | null;
+  return stored && CONSOLE_KEYS.includes(stored) ? stored : 'theme';
+}
+
+function readStoredConsoleColor(): string {
+  return localStorage.getItem('uartis_console_color') ?? '#101820';
+}
+
+function readStoredConsoleFontSize(): number {
+  const parsed = Number.parseInt(localStorage.getItem('uartis_console_font_size') ?? '', 10);
+  return Number.isFinite(parsed) && parsed >= 11 && parsed <= 18 ? parsed : 14;
 }
 
 function systemPrefersDark(): boolean {
@@ -72,6 +95,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [reducedMotion, setReducedMotionState] = useState<boolean>(
     () => localStorage.getItem('uartis_reduced_motion') === 'true'
   );
+  const [consoleBackground, setConsoleBackgroundState] = useState<ConsoleBackground>(readStoredConsoleBackground);
+  const [consoleCustomColor, setConsoleCustomColorState] = useState<string>(readStoredConsoleColor);
+  const [consoleFontSize, setConsoleFontSizeState] = useState<number>(readStoredConsoleFontSize);
 
   const resolvedTheme: ResolvedTheme = themeMode === 'system' ? (systemDark ? 'dark' : 'light') : themeMode;
 
@@ -115,6 +141,16 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     document.documentElement.setAttribute('data-reduced-motion', reducedMotion ? 'true' : 'false');
   }, [reducedMotion]);
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-console-bg', consoleBackground);
+    document.documentElement.style.setProperty('--app-console-custom-bg', consoleCustomColor);
+    document.documentElement.style.setProperty('--app-console-custom-fg', contrastText(consoleCustomColor));
+  }, [consoleBackground, consoleCustomColor]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--app-console-font-size', `${consoleFontSize}px`);
+  }, [consoleFontSize]);
+
   const setThemeMode = (mode: ThemeMode) => {
     setThemeModeState(mode);
     localStorage.setItem('uartis_theme', mode);
@@ -145,6 +181,21 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     localStorage.setItem('uartis_reduced_motion', enabled ? 'true' : 'false');
   };
 
+  const setConsoleBackground = (value: ConsoleBackground) => {
+    setConsoleBackgroundState(value);
+    localStorage.setItem('uartis_console_bg', value);
+  };
+
+  const setConsoleCustomColor = (value: string) => {
+    setConsoleCustomColorState(value);
+    localStorage.setItem('uartis_console_color', value);
+  };
+
+  const setConsoleFontSize = (value: number) => {
+    setConsoleFontSizeState(value);
+    localStorage.setItem('uartis_console_font_size', String(value));
+  };
+
   // The token values are CSS variables, so they resolve to the active
   // `data-theme` without duplicating the palette in JavaScript.
   const colors = themeColors;
@@ -166,6 +217,12 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         setHighContrast,
         reducedMotion,
         setReducedMotion,
+        consoleBackground,
+        setConsoleBackground,
+        consoleCustomColor,
+        setConsoleCustomColor,
+        consoleFontSize,
+        setConsoleFontSize,
       }}
     >
       {children}

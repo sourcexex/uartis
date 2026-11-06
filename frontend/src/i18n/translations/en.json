@@ -230,7 +230,20 @@
     "glassStandard": "Standard",
     "glassStrong": "Strong",
     "reduceMotion": "Reduce motion",
-    "reduceMotionDesc": "Disable transitions and non-essential animations"
+    "reduceMotionDesc": "Disable transitions and non-essential animations",
+    "console": "Console",
+    "consoleBackground": "Console background",
+    "consoleBackgroundDesc": "Background color of the log area",
+    "consoleTheme": "Theme",
+    "consoleNavy": "Navy",
+    "consoleForest": "Forest",
+    "consolePlum": "Plum",
+    "consoleWarm": "Warm paper",
+    "consoleBlack": "Black",
+    "consoleCustom": "Custom",
+    "consoleCustomColor": "Custom color",
+    "consoleFontSize": "Console font size",
+    "consoleFontSizeDesc": "Log text size"
   },
   "common": {
     "text": "Text",

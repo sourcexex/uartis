@@ -113,6 +113,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
     setHighContrast,
     reducedMotion,
     setReducedMotion,
+    consoleBackground,
+    setConsoleBackground,
+    consoleCustomColor,
+    setConsoleCustomColor,
+    consoleFontSize,
+    setConsoleFontSize,
   } = useTheme();
   const glassSupported = supportsBackdropFilter();
   const { language, setLanguage, t } = useLanguage();
@@ -595,6 +601,105 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
               </div>
               <Switch checked={reducedMotion} onCheckedChange={setReducedMotion} />
             </div>
+          </div>
+
+          {/* Console Appearance Section */}
+          <div className="space-y-3">
+            <Label
+              className="text-xs font-semibold uppercase tracking-wide ml-1"
+              style={{ color: colors.textTertiary }}
+            >
+              {t('settings.console')}
+            </Label>
+            <Card style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
+              <CardContent className="p-3 space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>
+                      {t('settings.consoleBackground')}
+                    </span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('settings.consoleBackgroundDesc')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(
+                      [
+                        { value: 'theme', color: 'var(--app-bg-main)', label: 'settings.consoleTheme' },
+                        { value: 'navy', color: '#0B1A2A', label: 'settings.consoleNavy' },
+                        { value: 'forest', color: '#0C1F17', label: 'settings.consoleForest' },
+                        { value: 'plum', color: '#1B1026', label: 'settings.consolePlum' },
+                        { value: 'warm', color: '#F5EFE6', label: 'settings.consoleWarm' },
+                        { value: 'black', color: '#000000', label: 'settings.consoleBlack' },
+                        { value: 'custom', color: consoleCustomColor, label: 'settings.consoleCustom' },
+                      ] as const
+                    ).map(({ value, color, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-label={t(label)}
+                        aria-pressed={consoleBackground === value}
+                        title={t(label)}
+                        onClick={() => setConsoleBackground(value)}
+                        className={`h-6 w-6 rounded-[var(--app-radius-sm)] border transition-transform ${
+                          consoleBackground === value ? 'scale-110' : 'hover:scale-105'
+                        }`}
+                        style={{
+                          background:
+                            value === 'custom'
+                              ? 'conic-gradient(#ef4444, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444)'
+                              : color,
+                          borderColor: consoleBackground === value ? colors.textPrimary : colors.borderLight,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {consoleBackground === 'custom' && (
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-xs" style={{ color: colors.textSecondary }}>
+                      {t('settings.consoleCustomColor')}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={consoleCustomColor}
+                        onChange={(event) => setConsoleCustomColor(event.target.value)}
+                        aria-label={t('settings.consoleCustomColor')}
+                        className="h-7 w-10 cursor-pointer rounded border border-[var(--app-border)] bg-transparent"
+                      />
+                      <span className="text-xs font-mono" style={{ color: colors.textTertiary }}>
+                        {consoleCustomColor}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>
+                      {t('settings.consoleFontSize')}
+                    </span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('settings.consoleFontSizeDesc')}
+                    </span>
+                  </div>
+                  <Select value={String(consoleFontSize)} onValueChange={(value) => setConsoleFontSize(Number(value))}>
+                    <SelectTrigger className="h-7 w-20 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[12, 13, 14, 15, 16].map((size) => (
+                        <SelectItem key={size} value={String(size)}>
+                          {size}px
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Regional Section */}

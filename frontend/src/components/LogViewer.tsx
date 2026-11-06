@@ -865,10 +865,14 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
       <div
         ref={logContainerRef}
         className="flex-1 overflow-y-auto scrollbar-thin p-1"
-        style={{ backgroundColor: colors.bgMain }}
+        style={{
+          backgroundColor: 'var(--app-console-bg)',
+          color: 'var(--app-console-fg)',
+          fontSize: 'var(--app-console-font-size)',
+        }}
       >
         {logs.length === 0 ? (
-          <div className="flex items-center justify-center h-full" style={{ color: colors.textTertiary }}>
+          <div className="flex items-center justify-center h-full" style={{ color: 'var(--app-console-muted)' }}>
             <div className="text-center">
               <Terminal size={48} className="mx-auto mb-4 opacity-50" />
               <p className="text-lg">{t('logViewer.noData')}</p>
@@ -903,7 +907,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
                       <span
                         className="text-xs select-none font-mono"
                         style={{
-                          color: colors.textTertiary,
+                          color: 'var(--app-console-muted)',
                           opacity: 0.5,
                           minWidth: `${Math.max(String(logs.length).length, 3)}ch`,
                           textAlign: 'right',
@@ -913,7 +917,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
                       </span>
                     )}
                     {showTimestamps && (
-                      <span className="text-xs select-none" style={{ color: colors.textTertiary, opacity: 0.6 }}>
+                      <span className="text-xs select-none" style={{ color: 'var(--app-console-muted)', opacity: 0.6 }}>
                         {renderTimestamp(log.timestamp, index)}
                       </span>
                     )}
@@ -924,8 +928,8 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
                       {log.direction === 'Sent' ? 'TX' : 'RX'}
                     </span>
                     <span
-                      className="flex-1 break-all font-mono text-sm whitespace-pre-wrap"
-                      style={{ color: colors.textPrimary }}
+                      className="flex-1 break-all font-mono whitespace-pre-wrap"
+                      style={{ color: 'var(--app-console-fg)', fontSize: 'var(--app-console-font-size)' }}
                     >
                       {renderTextWithHighlights(log.display_text ?? formatData(log.data), index)}
                     </span>
