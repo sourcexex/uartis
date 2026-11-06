@@ -56,8 +56,12 @@ interface LogViewerProps {
 }
 
 const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync, isConnected }) => {
-  const { colors } = useTheme();
+  const { colors, directionColors } = useTheme();
   const { t } = useTranslation();
+  const txColor = directionColors ? colors.accent : colors.textSecondary;
+  const rxColor = directionColors ? colors.success : colors.textSecondary;
+  const txBackground = directionColors ? colors.logSentBg : 'transparent';
+  const rxBackground = directionColors ? colors.logReceivedBg : 'transparent';
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   /** Identity of the last rendered entry — changes even when the capped
@@ -898,8 +902,8 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
                   }}
                   className="py-1 px-2 rounded-[4px] transition-colors duration-150"
                   style={{
-                    borderLeft: `2px solid ${log.direction === 'Sent' ? colors.accent : colors.success}`,
-                    backgroundColor: log.direction === 'Sent' ? colors.logSentBg : colors.logReceivedBg,
+                    borderLeft: `2px solid ${log.direction === 'Sent' ? txColor : rxColor}`,
+                    backgroundColor: log.direction === 'Sent' ? txBackground : rxBackground,
                   }}
                 >
                   <div className="flex items-start gap-2">
@@ -923,7 +927,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
                     )}
                     <span
                       className="font-bold text-xs uppercase select-none"
-                      style={{ color: log.direction === 'Sent' ? colors.accent : colors.success }}
+                      style={{ color: log.direction === 'Sent' ? txColor : rxColor }}
                     >
                       {log.direction === 'Sent' ? 'TX' : 'RX'}
                     </span>
@@ -968,11 +972,11 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
       >
         <div className="flex gap-4">
           <span className="flex items-center">
-            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: colors.accent }}></div>
+            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: txColor }}></div>
             {t('logViewer.tx')}: {sentCount}
           </span>
           <span className="flex items-center">
-            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: colors.success }}></div>
+            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: rxColor }}></div>
             {t('logViewer.rx')}: {receivedCount}
           </span>
         </div>
