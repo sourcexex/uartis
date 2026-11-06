@@ -127,6 +127,9 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
     if (disabled && isLooping) {
       stopLoop();
     }
+    // stopLoop is stable and reads the current timer ref; adding isLooping
+    // would re-run this effect every iteration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled]);
 
   // Cleanup timer on unmount
@@ -194,26 +197,32 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
     }, loopInterval);
   };
 
-  const updateCurrentList = (updatedCommands: QuickCommand[]) => {
-    const updatedLists = lists.map((list) =>
-      list.id === currentListId ? { ...list, commands: updatedCommands } : list
-    );
-    onListsChange(updatedLists);
-  };
+  const updateCurrentList = useCallback(
+    (updatedCommands: QuickCommand[]) => {
+      const updatedLists = lists.map((list) =>
+        list.id === currentListId ? { ...list, commands: updatedCommands } : list
+      );
+      onListsChange(updatedLists);
+    },
+    [lists, currentListId, onListsChange]
+  );
 
-  const handleCommandChange = (index: number, field: keyof QuickCommand, value: any) => {
-    const command = currentList.commands[index];
-    let processedValue = value;
+  const handleCommandChange = useCallback(
+    (index: number, field: keyof QuickCommand, value: QuickCommand[keyof QuickCommand]) => {
+      const command = currentList.commands[index];
+      let processedValue = value;
 
-    // If changing content in hex mode, apply hex formatting
-    if (field === 'content' && command.isHex) {
-      processedValue = formatHexInput(value);
-    }
+      // If changing content in hex mode, apply hex formatting
+      if (field === 'content' && command.isHex) {
+        processedValue = formatHexInput(value as string);
+      }
 
-    const updatedCommands = [...currentList.commands];
-    updatedCommands[index] = { ...updatedCommands[index], [field]: processedValue };
-    updateCurrentList(updatedCommands);
-  };
+      const updatedCommands = [...currentList.commands];
+      updatedCommands[index] = { ...updatedCommands[index], [field]: processedValue };
+      updateCurrentList(updatedCommands);
+    },
+    [currentList.commands, updateCurrentList]
+  );
 
   // Handle hex toggle with automatic text↔hex conversion
   const handleHexToggle = useCallback(
@@ -251,7 +260,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
         setConvertingIndex(null);
       }
     },
-    [currentList.commands, currentListId, lists, onListsChange]
+    [currentList.commands, handleCommandChange, updateCurrentList]
   );
 
   const handleAddMoreCommands = () => {

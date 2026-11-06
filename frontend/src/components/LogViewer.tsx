@@ -487,6 +487,10 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
       }
     });
     return matches;
+    // formatData embeds the current display settings; adding it would rebuild
+    // the search index on every render. Event frames use display_text, so this
+    // fallback only affects legacy snapshot rows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, logs]);
 
   /**
