@@ -56,9 +56,18 @@
 
 ## 5. T2 待办
 
-- [ ] 用平台配置文件替代运行时 `set_decorations`，消除原生标题栏闪烁。
+- [x] 用平台配置文件替代运行时 `set_decorations`：`tauri.windows.conf.json` / `tauri.linux.conf.json` 创建时即 `decorations:false`；macOS 在 `tauri.macos.conf.json` 保留 `decorations:true` + `Overlay`/`hiddenTitle`。
 - [ ] 手动验证拖动、最小化/关闭、Snap Layouts、100/125/150/200% DPI、多显示器。
 - [ ] macOS：原生红绿灯安全区、全屏、⌘W/⌘M/⌘Q。
 - [ ] Linux：GNOME/KDE X11/Wayland 拖动/resize、平铺 WM。
-- [ ] 把 `TitleBar` 接入 Fluent token/主题，移除硬编码尺寸；补 `aria-label`/键盘/高对比。
+- [ ] 把 `TitleBar` 接入正式设计 token/主题，补 `aria-label`/键盘/高对比。
 - [ ] 兼容模式设置与窗口状态记忆。
+
+## 6. T2 平台配置进度（2026-11-06）
+
+- 基础 `tauri.conf.json` 只保留跨平台公共窗口字段；不再写 macOS 专属 `titleBarStyle`/`trafficLightPosition`。
+- 新增 `tauri.windows.conf.json`、`tauri.linux.conf.json`、`tauri.macos.conf.json`，每个平台提供完整窗口对象，避免数组合并歧义。
+- 删除 Rust `setup` 中的 `set_decorations(false)`，窗口创建时即为无边框，消除首帧原生标题栏闪烁。
+- Windows 150% DPI 构建 + 启动截图确认：自绘标题栏、按钮、玻璃与控制区正常，无原生 caption。
+- macOS/Linux 仍需实机验证；若平台配置未按预期合并，回退方案是恢复 Rust `set_decorations` 并记录。
+
