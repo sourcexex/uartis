@@ -27,6 +27,8 @@
 - [x] 窗口 resize 后日志/发送区不溢出
 - [x] `tsc` / ESLint / Prettier / Vitest（12）/ Vite build / Tauri NSIS 构建
 - [x] 构建产物：CSS gzip 8.21 kB，JS gzip 145.87 kB（V6 构建）
+- [x] 外观设置扩展：跟随系统、强调色 4 套、毛玻璃强度 3 档、减少动效
+- [ ] 外观设置截图/交互手测（系统主题切换、强调色、强度、减少动效）
 
 ## 3. 尚未完成
 

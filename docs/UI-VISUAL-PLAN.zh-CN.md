@@ -221,5 +221,7 @@
 - 复验：最小尺寸下侧栏折叠、工具条两行内可读、发送区完整；截图 `assets/ui-v6-min-windows.png`，详见 [`UI-V6-ACCEPTANCE.zh-CN.md`](UI-V6-ACCEPTANCE.zh-CN.md)。
 - 验证：tsc / ESLint / Prettier / Vitest（12）/ Vite build / Tauri NSIS。
 - 高对比模式新增设置开关（`data-contrast="more"`）：实底玻璃、强边框、提高文字对比；系统 `prefers-contrast: more` 仍自动生效。
+- 外观设置扩展：跟随系统主题、强调色（蓝/绿/紫/橙，同步 shadcn `--primary/--ring`）、毛玻璃强度（轻/标准/强，`data-glass`）、减少动效（`data-reduced-motion`）。
+- 所有新增设置项均补齐 en/zh-CN 文案；i18n parity 测试 15 通过。
 - 未完成：亮色/高对比截图、完整键盘/屏幕阅读器、FPS 量化、macOS/Linux 实机、v1.2 版本与发布准备。
 
