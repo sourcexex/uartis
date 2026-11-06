@@ -344,7 +344,7 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 浮层：⌘K 命令面板 / 设置(左分类+搜索+恢复默认+快捷键) / 危险操作确认 / Toast(节流+action)
 ```
 
-视觉与壳层按 **§5.4 Fluent UI React v9**：顶部 Toolbar、设置分类页、原生标题栏（不自绘）、Win11 可选 Mica；日志区仍用原生滚动容器。
+视觉与壳层按 **§5.4 Fluent UI React v9**：顶部 Toolbar、设置分类页、**自绘标题栏（跨平台混合方案，详见 §5.5）**、Win11 可选 Mica；日志区仍用原生滚动容器。
 
 ### 5.3 改造优先级
 
@@ -375,7 +375,7 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 1. **组件层零 Windows 假设**：所有平台差异收敛到 `utils/platform.ts` 与 Rust 端 `#[cfg]`/运行时检测，业务组件不出现 `navigator.platform` 判断（现有 `platform.ts` 可复用，但改为显式平台能力对象）。
 2. **字体按平台回退**：Windows `Segoe UI Variable Text/Display` → `Segoe UI`；macOS `SF Pro Text/Display`；Linux 用系统 UI 字体（`Noto Sans`/`Ubuntu`/`Cantarell`）；中文统一 `PingFang SC`/`Microsoft YaHei`/`Noto Sans SC`。
 3. **主题用 FluentProvider**：`webLightTheme`/`webDarkTheme` 为基础，用 `createLightTheme`/`createDarkTheme` 生成品牌 ramp；支持"跟随系统 + 手动亮/暗"，尊重 `prefers-color-scheme` 与 `prefers-reduced-motion`。
-4. **窗口保留原生标题栏**：三平台都不自绘标题栏，避免丢失拖动/双击最大化/Snap Layouts/系统菜单/macOS 红绿灯；只用窗口材质（Mica）增强，不做无边框窗口。
+4. **自绘标题栏（2026-11 决策变更）**：三平台改为自绘标题栏壳层；具体为“自绘内容 + 平台原生窗口控件”混合方案——macOS 保留原生红绿灯（`titleBarStyle: Overlay` + `hiddenTitle`），Windows/Linux 自绘最小化/最大化/关闭。原“保留原生标题栏”的决策作废，详见 **§5.5** 与 [`TITLEBAR-PLAN.zh-CN.md`](TITLEBAR-PLAN.zh-CN.md)。风险（Win11 Snap Layouts、Linux Wayland、macOS 红绿灯）在该计划中逐项处理，并保留“系统标题栏”兼容模式。
 5. **Mica 是可选增强**：仅 Windows 11 且检测可用时出现在设置中；关闭/不支持时回退纯色。macOS/Linux 不显示该设置项。
 6. **CI 覆盖三平台编译**：至少 `windows-latest` + `macos-latest` 跑 `cargo test`，`ubuntu-latest` 跑 `cargo check` + 前端构建（Linux 运行库按 Tauri 文档装），避免"只在 Windows 能编译"。
 
@@ -461,7 +461,21 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 | 图标体系迁移 | 视觉不一致/工作量 | 分面板迁移，过渡期共存，最后移除 lucide |
 | React 版本联动 | Fluent v9 对 React 19 支持需确认 | 保持 React 18（v1.2 不升级）；升级 React 19 单独专项验证 peerDependencies |
 
-**默认决策（实现时按此执行）**：保留 Tailwind 做布局、组件视觉全部 Fluent；原生标题栏；Mica 默认关闭；品牌色沿用 `#0A84FF`；Linux 先保证编译与冒烟，不纳入正式发布。
+**默认决策（实现时按此执行）**：保留 Tailwind 做布局、组件视觉全部 Fluent；**自绘标题栏（混合方案，详见 §5.5）**；Mica 默认关闭；品牌色沿用 `#0A84FF`；Linux 先保证编译与冒烟，不纳入正式发布。
+
+### 5.5 自绘标题栏与窗口壳层（跨平台，v1.2）
+
+**决策**：取代 §5.4.1 第 4 条的原生标题栏决策。采用 **自绘内容 + 平台原生控件** 的混合方案，默认自绘，设置提供“系统标题栏（兼容模式）”回退。完整设计、平台矩阵、任务 T1–T7、风险与 DoD 见 [`TITLEBAR-PLAN.zh-CN.md`](TITLEBAR-PLAN.zh-CN.md)。
+
+| 平台 | 外壳 | 窗口控件 | 关键风险 |
+|---|---|---|---|
+| Windows 10/11 | `decorations: false` + 自绘栏 | 自绘最小化/最大化/关闭（右） | Snap Layouts 可能丢失；DPI/多屏 |
+| macOS 13+ | `titleBarStyle: Overlay` + `hiddenTitle` | **原生红绿灯**（不画假按钮） | 红绿灯安全区/全屏 |
+| Linux X11/Wayland | `decorations: false` + 自绘栏 | 自绘按钮（右） | Wayland 拖拽/缩放、平铺 WM |
+
+**任务**：T1 三平台 spike（2–3d）→ T2 核心组件（3–4d）→ T3/T4/T5 三平台适配并行（各 2–3d）→ T6 兼容模式/窗口状态（1–2d）→ T7 验收文档（2–3d）。与 Fluent B1/B3 同批，先做壳层；单人 3–4 周，双人约 2 周。
+
+**关键约束**：只让标题栏空白区可拖，交互元素显式 no-drag；双击空白区最大化；最大化图标跟随状态；高对比/键盘/屏幕阅读器可用；Mica 开启时标题栏实底兜底；840×560 最小尺寸复验。
 
 ---
 
@@ -512,7 +526,7 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 10. 更新检查/下载：篡改 `asset_name`/URL 被拒绝；断网有可读错误。
 11. Fluent 视觉：Win11 上 light/dark/高对比三套截图；控件 normal/hover/pressed/disabled 四态；焦点环可见；`prefers-reduced-motion` 生效。
 12. Win11 Mica 开/关：拖动、缩放、双击最大化、右键系统菜单、Snap Layouts、多显示器/DPI、远程桌面/截图；关闭后完全恢复纯色。
-13. Mica 可用性检测：Win10/Win11/macOS/Linux 上设置项显示/隐藏正确；透明窗口回退纯色后可读（不自绘标题栏）。
+13. Mica 可用性检测：Win10/Win11/macOS/Linux 上设置项显示/隐藏正确；透明窗口回退纯色后可读（自绘标题栏下也必须有实底兜底）。
 14. macOS/Linux：无 Mica 时纯色回退、原生红绿灯/窗口按钮正常、字体回退正常。
 
 ### 6.4 风险与规避
@@ -527,7 +541,7 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 | Fluent 全量迁移引发功能/样式回归 | 核心链路回退、跨平台差异 | §5.4 分 B1–B4 四批合并；每批回归核心链路 + 三平台截图；保留一个可回滚 tag |
 | Griffel 与 Tailwind/CSP 冲突 | 生产样式丢失或局部错乱 | B1 先解决 preflight/层级；CSP 预留 `style-src 'unsafe-inline'`；CI 加 CSP/构建冒烟 |
 | Linux WebKitGTK 渲染差异 | Linux 布局/滚动异常 | CI `ubuntu-latest` 编译 + 冒烟；关键布局用 Fluent token；不依赖浏览器专有特性 |
-| Mica/透明窗口与系统行为冲突 | 截图/录屏/远程桌面异常、性能下降 | 默认关闭、仅 Win11 显示、设置可关；保留纯色回退；不做自绘标题栏 |
+| Mica/透明窗口与系统行为冲突 | 截图/录屏/远程桌面异常、性能下降 | 默认关闭、仅 Win11 显示、设置可关；保留纯色回退；自绘标题栏保留“系统标题栏”兼容模式 |
 | bundle 增大导致启动变慢 | 体验下降 | Fluent 按需 import + 图标按需引入；记录 gzip 增量并设阈值 |
 | 文档 `*.md` 被 gitignore | 规划/文档无法入库 | 加 `!docs/**/*.md` 例外并清理规则 |
 
@@ -538,7 +552,7 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 - 不先做脚本引擎（等 CLI/API 抽象稳定）。
 - 不在 v1.1 动多会话架构，也不在 v1.1 引入 Fluent（v1.1 只做稳定性；Fluent 迁移从 v1.2 开始）。
 - 不引入 WinUI 3/XAML 或原生 Windows App SDK 控件（Tauri 架构不支持；只做 Fluent UI React v9 + Win11 Mica 材质）。
-- 不自绘标题栏（保留三平台原生标题栏，避免丢失拖动/最大化/Snap/系统菜单/macOS 红绿灯）。
+- 不做三平台完全自绘（包括 macOS 假红绿灯）；采用“自绘内容 + 平台原生控件”混合方案，并保留系统标题栏兼容模式（详见 §5.5）。
 - 不默认开启 Mica（仅 Win11 且检测可用时在设置中出现，默认关闭，保证截图/远程桌面可回退）。
 - 不牺牲 macOS/Linux：所有 UI 改动必须三平台构建/冒烟验收；不为 Windows 观感引入 Windows-only 行为。
 - 不在 v1.2 同时改 UI 体系与大量业务功能（v1.2 只做迁移 + 必要修复；日志工具条/发送计划等放 v1.3）。
