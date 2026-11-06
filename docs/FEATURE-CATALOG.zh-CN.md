@@ -3,7 +3,7 @@
 > **目标**：把串口调试/测试/分析类工具的功能"尽量挖全"，给 Uartis 一份可逐项决策的功能清单（已具备 / 缺失 / 建议版本 / 不做理由）。
 > **方法**：R1 覆盖 26 个通用工具；R2 追加 4 路调研（Windows 商业/国产、macOS/Linux/CLI、开源/现代、协议/工业/测试诊断），实际抓取 110+ 页面（报告见 `.tmp/plan/05-market-*.md` 与 `03-competitor-research.md`）。抓不到的证据一律标「待核实」，不编造。
 > **覆盖**：11 个大类、**约 279 项功能**；其中 Uartis 现状已具备约 30 项、部分支持约 12 项、缺失 230+ 项。缺失项按价值/成本/差异化排入版本或明确"不做"。
-> **版本口径**：v1.1 稳定 → v1.2 Fluent UI 迁移 → v1.3 效率 → v1.4 连接/协议基础 → v2.0 平台化 → **v2.1 专业/自动化** → 观察/不做。R2 报告建议的部分版本（如 Modbus v1.2）因 v1.2 已排 UI 迁移而顺延，本文件已按当前规划重排。
+> **版本口径**：v1.1 稳定 → v1.2 UI 视觉优化（设计 token + 毛玻璃 + 自绘标题栏，不引入 Fluent/WinUI）→ v1.3 效率 → v1.4 连接/协议基础 → v2.0 平台化 → **v2.1 专业/自动化** → 观察/不做。R2 报告建议的部分版本（如 Modbus v1.2）因 v1.2 已排视觉优化而顺延，本文件已按当前规划重排。
 > **记号**：`✅` 已具备 · `△` 部分支持 · `❌` 缺失；价值 `★★★/★★/★`；难度 `低/中/高`；计划 `v1.1…v2.1 / 观察 / 不做`。
 
 ---
@@ -390,7 +390,7 @@
 | K17 | 版本管理/变更日志 | Uartis（CI notes） | ✅/△ | ★★ | 低 | — |
 | K18 | 文档/多语言文档 | Uartis | ✅/△ | ★★ | 低 | 持续 |
 | K19 | 自动备份/恢复配置 | 现代工具 | ❌ | ★ | 低 | 观察 |
-| K20 | 设计系统/主题体系（Fluent） | 现代桌面应用 | ❌ | ★★★ | 中 | v1.2 |
+| K20 | 设计系统/主题体系（token + 毛玻璃） | 现代桌面应用 | ❌ | ★★★ | 中 | v1.2 |
 
 ---
 
@@ -485,9 +485,9 @@
 
 **新增进路线图**：字符映射三表（C18）、时间戳格式族（C05/C06）、端口锁/只读模式（A13/A14）、RTS/DTR 脉冲编排（A12）、日志轮转/文件名模板（D04/D05）、触发式快照（G18）、暂停/过滤/复制（C10/C12/C13/C32）、raw PDU（B22）、RFC2217（A23）、TCP/UDP 桥（A22）、记录回放（D16/D19）、协议模板/字段视图（E01/E02/E05）、Modbus 工作台（E06/E10-E13）、波形（F01）、脚本/断言/报告（G01/G11/G12）、CLI/API/MCP（I10-I12）、免驱虚拟对端（J01）。
 
-**版本调整**：R2 Windows 报告建议 Modbus/多会话 v1.3；因 v1.2 已排 Fluent 迁移，本规划将 raw PDU 提前到 v1.3、Modbus/多会话后置 v2.0；端口锁/字符映射/时间戳等低成本项前置到 v1.1。
+**版本调整**：R2 Windows 报告建议 Modbus/多会话 v1.3；因 v1.2 已排 UI 视觉优化，本规划将 raw PDU 提前到 v1.3、Modbus/多会话后置 v2.0；端口锁/字符映射/时间戳等低成本项前置到 v1.1。
 
-**与原路线的兼容**：§5.4 的 Fluent v1.2 是 UI 体系迁移，不与功能冲突；v1.3 起所有新面板用 Fluent 组件。
+**与原路线的兼容**：§5.4 的 v1.2 视觉优化不更换组件库，不与功能冲突；v1.3 起新面板沿用现有 shadcn/Radix + 设计 token。
 
 ---
 
@@ -496,6 +496,6 @@
 - R1：`.tmp/plan/03-competitor-research.md`（26 工具 × 26 项矩阵、来源链接）
 - R2：`.tmp/plan/05-market-windows.md`、`05-market-unix.md`、`05-market-protocol-test.md`、`05-market-oss.md`（本文件所有 `代表工具` 的依据，含 110+ 抓取页面与待核实清单）
 - 关键来源：Serial Studio Pro-vs-Free <https://github.com/Serial-Studio/Serial-Studio/blob/master/doc/help/Pro-vs-Free.md> ｜ SerialRUN <https://github.com/YaoIsAI/SerialRUN> ｜ serial-mcp-server <https://github.com/Adancurusul/serial-mcp-server> ｜ QSerial <https://github.com/qiuchengcai/QSerial> ｜ FluentSerialAssistant <https://github.com/txp666/FluentSerialAssistant> ｜ tio <https://manpages.debian.org/trixie/tio/tio.1.en.html> ｜ RFC 2217 <https://datatracker.ietf.org/doc/html/rfc2217> ｜ Docklight 手册 <https://docklight.de/manual/docklightoverview.html> ｜ HHD <https://hhdsoftware.com/device-monitoring-studio>
-- Fluent/UI 方向见 `docs/OPTIMIZATION-PLAN.zh-CN.md` §5.4；工程与安全见 `.tmp/plan/04-engineering-audit.md`。
+- UI 视觉方向见 `docs/OPTIMIZATION-PLAN.zh-CN.md` §5.4 与 `docs/UI-VISUAL-PLAN.zh-CN.md`；工程与安全见 `.tmp/plan/04-engineering-audit.md`。
 
 *本文件只做功能盘点与优先级建议，未改动任何源码；"待核实"项在有官方页面后应更新。*

@@ -1,0 +1,160 @@
+# UI 视觉优化与毛玻璃计划（v1.2）
+
+> 状态：**规划中，未实现**。
+> 目标版本：**v1.2.0**（与自绘标题栏 T2 同批）。
+> 决策变更：**不再引入 Fluent UI React，也不做 WinUI 重写**；保留 React 18 + shadcn/Radix + Tailwind，通过设计 token、组件精修、自绘标题栏和克制的毛玻璃提升观感。
+> 关联：[`OPTIMIZATION-PLAN.zh-CN.md`](OPTIMIZATION-PLAN.zh-CN.md) §5.4、[`EXECUTION-PLAN.zh-CN.md`](EXECUTION-PLAN.zh-CN.md) Sprint 2、[`TITLEBAR-PLAN.zh-CN.md`](TITLEBAR-PLAN.zh-CN.md)。
+
+## 0. 结论
+
+不改组件库、不重写业务面板。用**低风险、可回退**的方式做视觉升级：
+
+1. **设计 token 化**：颜色/字体/间距/圆角/阴影/动效统一，清理 ThemeContext 内联 hex 与死 CSS。
+2. **壳层精修**：自绘标题栏、侧栏、顶部工具条、状态栏统一层级与材质。
+3. **克制的毛玻璃**：只用在固定壳层与浮层（标题栏、侧栏、工具条、对话框、Toast），日志正文/编辑区保持实底；无 `backdrop-filter` 时回退纯色。
+4. **组件精修**：沿用 shadcn/Radix，补齐 hover/pressed/disabled/focus/加载/错误态，不换库。
+5. **Win11 Mica 可选**：仅作为 Windows 11 增强，默认关闭；macOS/Linux 用 CSS 毛玻璃或纯色。
+6. **可访问性优先**：对比度 AA、键盘焦点、高对比、减少动效/透明。
+
+## 1. 目标与非目标
+
+### 目标
+- 三平台观感一致但尊重平台字体/标题栏差异；暗色/亮色/高对比三套可用。
+- 至少 3 个层级（背景/壳层/浮层）有清晰的视觉层次，减少“全平”感。
+- 首屏和 1000 行日志滚动性能不劣化；毛玻璃不进入滚动热路径。
+- 所有 glass 表面有纯色回退，低性能/远程桌面可关闭。
+- 视觉改造按组件分批，可独立回滚，不阻塞 v1.3 功能。
+
+### 非目标（本轮不做）
+- 不引入 Fluent UI React / `@fluentui/react-components` / Griffel。
+- 不引入 WinUI 3 / Windows App SDK / C#/XAML 重写。
+- 不重做信息架构；不换 Tailwind/shadcn/Radix。
+- 不做全屏半透明/模糊日志正文（可读性和性能优先）。
+- 不升级 React 19 / Vite 8 / Tailwind 4（单独专项）。
+- 不把玻璃效果做成默认强制；用户可关闭。
+
+## 2. 设计系统（token 化）
+
+### 2.1 Token 层
+- **颜色**：背景 `bg`/`bg-subtle`/`bg-elevated`、前景 `fg`/`fg-muted`/`fg-subtle`、边框 `border`/`border-strong`、品牌 `accent`/`accent-hover`、状态 `success/warning/danger/info`。
+- **字体**：Windows `Segoe UI`/`Segoe UI Variable` → macOS `SF Pro`/`-apple-system` → Linux `Noto Sans`/`Ubuntu`/`Cantarell`；中文 `PingFang SC`/`Microsoft YaHei`/`Noto Sans SC`；日志区等宽 12–13px。
+- **间距**：4/8/12/16/20/24/32。
+- **圆角**：控件 4px、卡片/对话框 8px、大面板 12px；不混用“全圆角”。
+- **阴影**：`shadow-1` 壳层、`shadow-2` 浮层、`shadow-3` 对话框；暗色减少黑色阴影、增加 1px 高光边框。
+- **动效**：120ms（hover）/180ms（展开）/240ms（对话框）；尊重 `prefers-reduced-motion`。
+
+### 2.2 主题
+- 保留 `light`/`dark`/`system` 三态；`html { color-scheme }` 防 FOUC。
+- shadcn CSS 变量作为公共出口，内部映射到 token；业务组件不直接写 hex。
+- 清理 `ThemeContext` 内联颜色与 `styles.css` 死类；硬编码色统一进 token 文件。
+- 对比度：正文 ≥4.5:1，大字号 ≥3:1；高对比模式跟随系统。
+
+## 3. 毛玻璃（Glassmorphism）规范
+
+### 3.1 使用范围
+| 层级 | 是否使用 | 说明 |
+|---|---|---|
+| 标题栏 | ✅ | 半透明 + 细边框 + 轻微 blur，与内容分层 |
+| 侧栏 | ✅ | 仅背景层；内部按钮/列表不叠加 blur |
+| 顶部工具条 / 状态栏 | ✅ | 固定壳层，blur 12–16px |
+| 对话框 / Popover / Toast | ✅ | 浮层背景 blur + 阴影；内容实底 |
+| 设置弹窗 | ✅ | 外壳 glass，表单区实底保证可读 |
+| 日志正文 / 发送编辑区 | ❌ | 禁止 blur；保持实底、等宽、可选中 |
+| 表格/列表行 | ❌ | 避免滚动重绘与文字发虚 |
+
+### 3.2 Token 与实现
+```css
+:root {
+  --glass-bg: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  --glass-bg-strong: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  --glass-border: color-mix(in srgb, var(--fg) 12%, transparent);
+  --glass-highlight: color-mix(in srgb, #fff 10%, transparent);
+  --glass-blur: 14px;
+  --glass-saturate: 120%;
+}
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-1);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: var(--bg-elevated); }
+}
+```
+- 只给**固定/浮层**加 glass，不给滚动容器。
+- 避免嵌套 blur；避免全屏大面积 blur。
+- `prefers-reduced-transparency`/设置项开启时统一回退实底（不依赖浏览器支持）。
+
+### 3.3 Win11 Mica（可选增强）
+- 仅 Windows 11 且 Tauri 窗口效果可用时显示设置开关，默认关闭。
+- Mica 走原生窗口背景；标题栏/侧栏用半透明 token 透出，日志/编辑区仍实底。
+- macOS/Linux 不显示该开关，使用 CSS blur 或纯色。
+- 远程桌面/截图异常时一键关闭；保留纯色回退。
+
+### 3.4 性能与可访问性
+- 首屏、1000 行滚动、窗口拖动/缩放各测 FPS；glass 层不超过 4 个可见表面。
+- blur ≤ 20px；大表面用 `--glass-bg-strong` 降低透明度而不是加大 blur。
+- 文字不直接压在复杂背景上；玻璃表面保证边框/对比度。
+- 焦点环不被 blur 吞掉；高对比模式禁用透明。
+
+## 4. 组件与页面改造清单
+
+| 区域 | 改造 |
+|---|---|
+| App 壳层 | token 背景、标题栏/侧栏/状态栏分层；`--titlebar-height` 统一 |
+| 侧栏 | 背景 glass、hover/active 精修；折叠态一致 |
+| 顶部工具条 | 统一按钮尺寸/图标间距；分组与分隔线弱化 |
+| 按钮/输入/下拉 | 统一 4px 圆角、hover/pressed/disabled/focus 四态；不换库 |
+| 对话框/确认 | glass 外壳 + 实底内容 + 阴影；键盘可取消 |
+| Toast/通知 | glass 背景 + 左侧状态色；节流与 action 保留 |
+| 设置 | 分类 + 搜索保留；表单控件视觉统一；材质/透明开关放这里 |
+| 状态栏 | 弱化文字、强调连接状态；不 blur 数字正文 |
+| 自绘标题栏 | 接入 token/glass；与 T2 合并实现 |
+| 图标 | 继续 lucide；统一 14/16/18/20 尺寸，不迁移图标库 |
+
+## 5. 分阶段任务（v1.2）
+
+| ID | 任务 | 工期 | 依赖 | 验收 |
+|---|---|---|---|---|
+| **V1** | Token/主题基础：颜色/字体/间距/圆角/阴影/动效变量；清理 ThemeContext 硬编码与死 CSS；亮暗/system | 2–3d | 无 | 业务组件不再写 hex；三主题可切换 |
+| **V2** | 壳层：标题栏（与 T1/T2 合并）、侧栏、工具条、状态栏分层与 glass token | 3–4d | V1、T1 | 三平台壳层层次一致；无布局跳动 |
+| **V3** | 控件精修：按钮/输入/下拉/开关/复选/对话框/Toast 四态与焦点 | 3–4d | V1 | 组件画廊验收；键盘可达 |
+| **V4** | 浮层与设置：glass 对话框/Popover/设置分类；材质开关 | 2–3d | V2/V3 | 弹窗可读；开关可回退 |
+| **V5** | 毛玻璃调优：范围/强度/回退；1000 行滚动与窗口拖动 FPS；WebKitGTK 冒烟 | 2–3d | V2–V4 | 不掉帧；无 filter 时纯色正常 |
+| **V6** | 验收：三平台截图、亮暗/高对比、a11y、文档/AGENTS 更新 | 2–3d | V1–V5 | DoD 全部通过；有回滚 tag |
+
+**总工期**：单人约 2–3 周；与标题栏 T2 并行可压缩。建议顺序 V1 → V2 → V3/V4 并行 → V5 → V6。
+
+## 6. 风险与缓解
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| `backdrop-filter` 在 WebKitGTK/旧 WebView 不支持 | 透明层变灰/不可读 | `@supports` + 实底回退；CI/实机冒烟 |
+| 大面积 blur 导致滚动/拖动掉帧 | 性能下降 | 只用于固定壳层/浮层；限制层数与 blur 半径；实测 FPS |
+| 透明导致文字对比度不足 | 可读性/a11y | 实底内容区；玻璃层加边框/阴影；对比度检查 |
+| 自绘标题栏与玻璃叠加 | 层级混乱/发灰 | 标题栏用 `--glass-bg-strong`；日志区实底 |
+| 主题 token 与现有 shadcn 变量冲突 | 局部样式错乱 | 先映射再替换；分批截图回归 |
+| 视觉改造范围蔓延 | 拖延 v1.3 | 只改壳层与组件状态，不重排信息架构；按 V1–V6 分批 |
+| Mica 与 glass 双重透明 | 不可读/性能差 | Mica 默认关；开启时标题栏实底兜底；可关闭 |
+| 用户不喜欢透明 | 体验争议 | 设置“减少透明/纯色模式”，默认适度 |
+
+## 7. 验收清单（DoD）
+
+- [ ] 业务组件不再直接写 hex；颜色/字体/间距/圆角来自 token。
+- [ ] 亮色/暗色/高对比三套截图通过；`prefers-reduced-motion` 生效。
+- [ ] 标题栏/侧栏/工具条/状态栏层次清晰；日志/编辑区保持实底。
+- [ ] 对话框/Toast/Popover glass 可读，焦点环可见，键盘可关闭。
+- [ ] 无 `backdrop-filter` 环境自动纯色，不出现透明灰块。
+- [ ] 1000 行日志滚动、窗口拖动/缩放不劣化（记录基线）。
+- [ ] Windows 11 Mica 开/关可回退；macOS/Linux 正常。
+- [ ] 840×560 最小尺寸下控件不被裁切。
+- [ ] 设置中可关闭透明/减少动效；有回滚 tag。
+
+## 8. 回滚
+
+- 视觉改动按 V1–V6 分批提交，每批可 revert。
+- glass 通过 `.glass` 类集中控制；关闭时移除类即可回退纯色。
+- Mica 独立设置开关；默认关闭。
+- 保留 v1.1.1 稳定 tag 作为回滚基线。
