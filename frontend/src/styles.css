@@ -256,6 +256,28 @@
     }
   }
 
+  [data-contrast='more'] {
+    --app-glass-bg: var(--app-bg-surface);
+    --app-glass-bg-strong: var(--app-bg-surface);
+    --app-glass-border: var(--app-text-secondary);
+    --app-glass-blur: 0px;
+    --app-glass-saturate: 100%;
+    --app-border: var(--app-text-secondary);
+    --app-border-light: var(--app-text-secondary);
+    --app-border-dark: var(--app-text-primary);
+  }
+
+  [data-contrast='more'] .app-shell {
+    background-image: none;
+  }
+
+  [data-contrast='more'] .glass-surface,
+  [data-contrast='more'] .glass-surface-strong {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,

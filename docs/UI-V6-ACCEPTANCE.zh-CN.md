@@ -26,11 +26,12 @@
 - [x] 日志工具条折行（`flex-wrap`）
 - [x] 窗口 resize 后日志/发送区不溢出
 - [x] `tsc` / ESLint / Prettier / Vitest（12）/ Vite build / Tauri NSIS 构建
-- [x] 构建产物：CSS gzip 8.14 kB，JS gzip 145.4 kB（V5 基线）
+- [x] 构建产物：CSS gzip 8.21 kB，JS gzip 145.87 kB（V6 构建）
 
 ## 3. 尚未完成
 
-- [ ] 亮色主题截图；高对比模式截图（CSS 已实现，未做视觉基线）
+- [x] 高对比模式可在 设置 → 外观 手动开启（`data-contrast="more"`：实底、强边框、更高文字对比）；截图待补
+- [ ] 亮色主题截图；高对比模式截图（开关已实现，未做视觉基线）
 - [ ] 完整键盘 Tab 顺序 / 屏幕阅读器抽查
 - [ ] 1000 行日志滚动 FPS、窗口拖动/缩放 FPS 量化
 - [ ] macOS WKWebView、Linux WebKitGTK 验收

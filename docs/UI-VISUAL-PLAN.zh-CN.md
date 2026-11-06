@@ -220,5 +220,6 @@
 - 修复：自动折叠阈值 640 → 900；日志工具条 `flex-wrap`；窗口 `resize` 时按 `mainContentHeight - sendPanelMinHeight` 重新 clamp 日志高度。
 - 复验：最小尺寸下侧栏折叠、工具条两行内可读、发送区完整；截图 `assets/ui-v6-min-windows.png`，详见 [`UI-V6-ACCEPTANCE.zh-CN.md`](UI-V6-ACCEPTANCE.zh-CN.md)。
 - 验证：tsc / ESLint / Prettier / Vitest（12）/ Vite build / Tauri NSIS。
+- 高对比模式新增设置开关（`data-contrast="more"`）：实底玻璃、强边框、提高文字对比；系统 `prefers-contrast: more` 仍自动生效。
 - 未完成：亮色/高对比截图、完整键盘/屏幕阅读器、FPS 量化、macOS/Linux 实机、v1.2 版本与发布准备。
 

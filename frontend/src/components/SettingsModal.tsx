@@ -98,7 +98,15 @@ interface SettingsModalProps {
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => {
-  const { themeMode, setThemeMode, colors, reducedTransparency, setReducedTransparency } = useTheme();
+  const {
+    themeMode,
+    setThemeMode,
+    colors,
+    reducedTransparency,
+    setReducedTransparency,
+    highContrast,
+    setHighContrast,
+  } = useTheme();
   const glassSupported = supportsBackdropFilter();
   const { language, setLanguage, t } = useLanguage();
   const [timezone, setTimezoneState] = useState<TimezoneOption>(loadTimezone);
@@ -485,6 +493,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 onCheckedChange={setReducedTransparency}
                 disabled={!glassSupported}
               />
+            </div>
+            <div
+              className="flex items-center justify-between gap-4 px-2 py-2"
+              style={{ borderTop: `1px solid ${colors.borderLight}` }}
+            >
+              <div className="flex flex-col">
+                <span className="text-sm" style={{ color: colors.textPrimary }}>
+                  {t('settings.highContrast')}
+                </span>
+                <span className="text-xs" style={{ color: colors.textTertiary }}>
+                  {t('settings.highContrastDesc')}
+                </span>
+              </div>
+              <Switch checked={highContrast} onCheckedChange={setHighContrast} />
             </div>
           </div>
 
