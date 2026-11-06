@@ -119,6 +119,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
     setConsoleCustomColor,
     consoleFontSize,
     setConsoleFontSize,
+    directionColors,
+    setDirectionColors,
   } = useTheme();
   const glassSupported = supportsBackdropFilter();
   const { language, setLanguage, t } = useLanguage();
@@ -697,6 +699,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-sm" style={{ color: colors.textPrimary }}>
+                      {t('settings.directionColors')}
+                    </span>
+                    <span className="text-xs" style={{ color: colors.textTertiary }}>
+                      {t('settings.directionColorsDesc')}
+                    </span>
+                  </div>
+                  <Switch checked={directionColors} onCheckedChange={setDirectionColors} />
                 </div>
               </CardContent>
             </Card>

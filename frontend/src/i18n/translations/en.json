@@ -243,7 +243,9 @@
     "consoleCustom": "Custom",
     "consoleCustomColor": "Custom color",
     "consoleFontSize": "Console font size",
-    "consoleFontSizeDesc": "Log text size"
+    "consoleFontSizeDesc": "Log text size",
+    "directionColors": "TX/RX colors",
+    "directionColorsDesc": "Show sent/received entries with blue/green color coding"
   },
   "common": {
     "text": "Text",

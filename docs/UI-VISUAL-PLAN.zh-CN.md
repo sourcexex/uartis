@@ -223,6 +223,7 @@
 - 高对比模式新增设置开关（`data-contrast="more"`）：实底玻璃、强边框、提高文字对比；系统 `prefers-contrast: more` 仍自动生效。
 - 外观设置扩展：跟随系统主题、强调色（蓝/绿/紫/橙，同步 shadcn `--primary/--ring`）、毛玻璃强度（轻/标准/强，`data-glass`）、减少动效（`data-reduced-motion`）。
 - 控制台外观：日志区背景预设（跟随主题/深海蓝/森林绿/葡萄紫/暖纸/纯黑）、自定义颜色（自动黑白文字对比）、控制台字号 12–16px；通过 `data-console-bg` + `--app-console-*` token 应用。
+- 方向颜色开关：可关闭 TX 蓝 / RX 绿（标签、左侧边框、行背景、页脚圆点改为中性色）；偏好持久化到 `uartis_direction_colors`。
 - 所有新增设置项均补齐 en/zh-CN 文案；i18n parity 测试 15 通过。
 - 未完成：亮色/高对比截图、完整键盘/屏幕阅读器、FPS 量化、macOS/Linux 实机、v1.2 版本与发布准备。
 

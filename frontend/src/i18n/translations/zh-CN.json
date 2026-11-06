@@ -243,7 +243,9 @@
     "consoleCustom": "自定义",
     "consoleCustomColor": "自定义颜色",
     "consoleFontSize": "控制台字号",
-    "consoleFontSizeDesc": "日志文字大小"
+    "consoleFontSizeDesc": "日志文字大小",
+    "directionColors": "TX/RX 颜色",
+    "directionColorsDesc": "用蓝/绿色区分发送与接收"
   },
   "common": {
     "text": "文本",

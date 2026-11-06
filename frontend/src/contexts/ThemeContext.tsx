@@ -33,6 +33,8 @@ interface ThemeContextType {
   setConsoleCustomColor: (color: string) => void;
   consoleFontSize: number;
   setConsoleFontSize: (size: number) => void;
+  directionColors: boolean;
+  setDirectionColors: (enabled: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -98,6 +100,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [consoleBackground, setConsoleBackgroundState] = useState<ConsoleBackground>(readStoredConsoleBackground);
   const [consoleCustomColor, setConsoleCustomColorState] = useState<string>(readStoredConsoleColor);
   const [consoleFontSize, setConsoleFontSizeState] = useState<number>(readStoredConsoleFontSize);
+  const [directionColors, setDirectionColorsState] = useState<boolean>(
+    () => localStorage.getItem('uartis_direction_colors') !== 'false'
+  );
 
   const resolvedTheme: ResolvedTheme = themeMode === 'system' ? (systemDark ? 'dark' : 'light') : themeMode;
 
@@ -196,6 +201,11 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     localStorage.setItem('uartis_console_font_size', String(value));
   };
 
+  const setDirectionColors = (enabled: boolean) => {
+    setDirectionColorsState(enabled);
+    localStorage.setItem('uartis_direction_colors', enabled ? 'true' : 'false');
+  };
+
   // The token values are CSS variables, so they resolve to the active
   // `data-theme` without duplicating the palette in JavaScript.
   const colors = themeColors;
@@ -223,6 +233,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         setConsoleCustomColor,
         consoleFontSize,
         setConsoleFontSize,
+        directionColors,
+        setDirectionColors,
       }}
     >
       {children}
