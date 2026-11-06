@@ -84,10 +84,9 @@ export default function TitleBar({ colors }: TitleBarProps) {
   return (
     <div
       data-tauri-drag-region
-      className="flex items-center shrink-0 select-none"
+      className="flex items-center shrink-0 select-none glass-surface"
       style={{
         height: 36,
-        backgroundColor: colors.bgHeader,
         borderBottom: `1px solid ${colors.border}`,
         color: colors.textPrimary,
         paddingLeft: isMac ? 78 : 12,
@@ -143,7 +142,7 @@ function CaptionButton({ label, colors, onClick, danger, children }: CaptionButt
       onMouseLeave={() => setHovered(false)}
       className="flex items-center justify-center h-full w-[46px] transition-colors"
       style={{
-        color: hovered ? '#ffffff' : colors.textSecondary,
+        color: hovered ? 'var(--app-on-accent)' : colors.textSecondary,
         backgroundColor: hovered ? (danger ? colors.danger : colors.bgHover) : 'transparent',
       }}
     >
