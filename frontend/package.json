@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "uartis-frontend",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Frontend for Uartis, a cross-platform serial debugging tool",
   "engines": {
     "node": ">=20"
