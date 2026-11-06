@@ -940,7 +940,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                     style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
                   >
                     <div className="flex items-start gap-2">
-                      <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-green-500" />
+                      <CheckCircle size={16} className="mt-0.5 flex-shrink-0" style={{ color: colors.success }} />
                       <div className="flex-1">
                         <div className="font-medium text-sm" style={{ color: colors.textPrimary }}>
                           {t('settings.readyToInstall')}
@@ -951,7 +951,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button className="flex-1 bg-green-500 hover:bg-green-600" size="sm" onClick={handleInstall}>
+                      <Button
+                        className="flex-1"
+                        size="sm"
+                        style={{ backgroundColor: colors.success, color: colors.onAccent }}
+                        onClick={handleInstall}
+                      >
                         {t('settings.closeAndInstall')}
                       </Button>
                       <Button variant="secondary" size="sm" onClick={handleCancelUpdate}>
@@ -988,7 +993,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                     className="p-3 border-t flex items-center gap-2"
                     style={{ borderColor: colors.borderLight, backgroundColor: colors.bgSurface }}
                   >
-                    <CheckCircle size={14} className="text-green-500" />
+                    <CheckCircle size={14} style={{ color: colors.success }} />
                     <span className="text-xs" style={{ color: colors.textSecondary }}>
                       {t('settings.upToDate')}
                     </span>

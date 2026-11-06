@@ -598,7 +598,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
           key={`${logIndex}-${match.startPos}`}
           style={{
             backgroundColor: isCurrentMatch ? colors.warning : colors.accent,
-            color: isCurrentMatch ? '#000' : colors.textPrimary,
+            color: isCurrentMatch ? colors.matchText : colors.textPrimary,
             borderRadius: '2px',
             padding: '0 1px',
           }}
