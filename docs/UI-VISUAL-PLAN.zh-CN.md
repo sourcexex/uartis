@@ -181,3 +181,14 @@
 - 暗色主题冒烟截图通过；设置弹窗截图确认玻璃层次与文案。
 - 未做：顶部全局工具条（当前还没有全局 Toolbar）、标题栏玻璃（等 T2）、其它 Dialog 统一、亮/暗/高对比三套基线、FPS 记录（V6）。
 
+### V3 控件与状态精修（2026-11-06，已完成基础层）
+
+- Button：四种变体统一 token 颜色、圆角、focus ring、hover/pressed/disabled；不使用内联 hex。
+- Input/Textarea/Select：统一边框、圆角、focus ring、placeholder；Select 下拉改为玻璃材质 + token 阴影。
+- Switch/Checkbox：checked 用品牌色，focus ring 用品牌色；Checkbox 圆角收敛到 4px。
+- Dialog：统一 token 边框/圆角/阴影；Toast 改为玻璃背景 + token 颜色。
+- TitleBar：接入 `.glass-surface`，标题栏与 V2 壳层材质一致；关闭按钮 hover 使用 `--app-on-accent`。
+- 验证：tsc / ESLint / Prettier / Vitest（9）/ Vite build / Tauri NSIS 构建通过；暗色截图确认标题栏、侧栏、状态栏与控件层次。
+- 未做：高对比/键盘全流程、其它弹窗统一玻璃、标题栏 platform 配置去闪烁、FPS 基线（V4–V6）。
+
+
