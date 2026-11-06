@@ -13,6 +13,8 @@ interface ThemeContextType {
   setThemeMode: (mode: ThemeMode) => void;
   reducedTransparency: boolean;
   setReducedTransparency: (enabled: boolean) => void;
+  highContrast: boolean;
+  setHighContrast: (enabled: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -25,6 +27,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [themeMode, setThemeModeState] = useState<ThemeMode>('dark');
   const [reducedTransparency, setReducedTransparencyState] = useState<boolean>(() =>
     resolveReducedTransparency(localStorage.getItem('uartis_reduced_transparency'), prefersReducedTransparency())
+  );
+  const [highContrast, setHighContrastState] = useState<boolean>(
+    () => localStorage.getItem('uartis_high_contrast') === 'true'
   );
 
   // Load saved theme from localStorage on mount
@@ -50,6 +55,10 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     document.documentElement.setAttribute('data-glass-supported', supportsBackdropFilter() ? 'true' : 'false');
   }, []);
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-contrast', highContrast ? 'more' : 'normal');
+  }, [highContrast]);
+
   const setThemeMode = (mode: ThemeMode) => {
     setThemeModeState(mode);
     localStorage.setItem('uartis_theme', mode);
@@ -60,12 +69,27 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     localStorage.setItem('uartis_reduced_transparency', enabled ? 'true' : 'false');
   };
 
+  const setHighContrast = (enabled: boolean) => {
+    setHighContrastState(enabled);
+    localStorage.setItem('uartis_high_contrast', enabled ? 'true' : 'false');
+  };
+
   // The token values are CSS variables, so they resolve to the active
   // `data-theme` without duplicating the palette in JavaScript.
   const colors = themeColors;
 
   return (
-    <ThemeContext.Provider value={{ themeMode, colors, setThemeMode, reducedTransparency, setReducedTransparency }}>
+    <ThemeContext.Provider
+      value={{
+        themeMode,
+        colors,
+        setThemeMode,
+        reducedTransparency,
+        setReducedTransparency,
+        highContrast,
+        setHighContrast,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );

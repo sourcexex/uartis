@@ -209,7 +209,9 @@
     "noExeFound": "No compatible installer found in the latest release",
     "retryDownload": "Retry Download",
     "reduceTransparency": "Reduce transparency",
-    "reduceTransparencyDesc": "Use solid surfaces instead of glass effects"
+    "reduceTransparencyDesc": "Use solid surfaces instead of glass effects",
+    "highContrast": "High contrast",
+    "highContrastDesc": "Stronger borders, solid surfaces and higher text contrast"
   },
   "common": {
     "text": "Text",

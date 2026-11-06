@@ -209,7 +209,9 @@
     "noExeFound": "最新版本中未找到兼容的安装程序",
     "retryDownload": "重试下载",
     "reduceTransparency": "减少透明",
-    "reduceTransparencyDesc": "使用纯色表面代替毛玻璃效果"
+    "reduceTransparencyDesc": "使用纯色表面代替毛玻璃效果",
+    "highContrast": "高对比模式",
+    "highContrastDesc": "增强边框、使用实底表面并提高文字对比度"
   },
   "common": {
     "text": "文本",
