@@ -115,7 +115,7 @@
 | S2-05 | Mica 可选：Rust `get_platform_info`（os/version/mica_available）；设置开关（默认关）；`set_effects` 应用/清除；透明窗口回退纯色 | `main.rs`、`serial_manager.rs`/新 `platform.rs`、`SettingsModal.tsx`、`tauri.conf.json` | S2-03 | 2–3d | Win11 可开关；Win10/macOS/Linux 隐藏；截图/远程桌面可回退 |
 | S2-06 | a11y/主题：焦点环、Field/Label 关联、icon aria-label、分隔条键盘、日志 `role=log tabIndex=0`、对比度 AA、减少动效 | 全前端 | S2-02/03 | 3–5d | 仅键盘完成全流程；对比度抽查 |
 | S2-07 | 响应式收尾：日志工具条折行、快捷命令列折叠、StatusBar 截断、删除 640 死分支或下调 minWidth | `LogViewer.tsx`、`QuickCommandPanel.tsx`、`StatusBar.tsx`、`tauri.conf.json` | S2-03 | 2–3d | 840×560 无裁剪 |
-| S2-10 | 自绘标题栏 T1+T2：三平台 spike（Win/Linux `decorations:false`、macOS `Overlay`/`hiddenTitle`）；`TitleBar`/`WindowControls`/`useWindowControls`；拖拽/双击/最大化状态/主题/i18n | `tauri.conf.json`、`src-tauri/capabilities/*`、新增 `components/TitleBar.tsx`、`WindowControls.tsx`、`hooks/useWindowControls.ts`、`utils/platform.ts`、`App.tsx`、`styles.css` | S2-01 | 4–5d | 三平台可拖动/缩放/全屏；Snap Layouts/Wayland/DPI 结论记录 |
+| S2-10 | 自绘标题栏 T1+T2：三平台 spike（Win/Linux `decorations:false`、macOS `Overlay`/`hiddenTitle`）；`TitleBar`/`WindowControls`/`useWindowControls`；拖拽/双击/最大化状态/主题/i18n；产出 `docs/TITLEBAR-SPIKE-NOTES.zh-CN.md` | `tauri.conf.json`、`src-tauri/capabilities/*`、新增 `components/TitleBar.tsx`、`WindowControls.tsx`、`hooks/useWindowControls.ts`、`utils/platform.ts`、`App.tsx`、`styles.css` | S2-01（T2 部分）；T1 可先行 | 4–5d（T1 2–3d） | 三平台可拖动/缩放/全屏；Snap Layouts/Wayland/DPI 结论记录；T1 Go/No-Go |
 | S2-11 | 自绘标题栏平台适配：Windows DPI/多屏/Mica 透明背景；macOS 红绿灯安全区/全屏；Linux X11/Wayland、GNOME/KDE 冒烟 | `TitleBar.tsx`、`WindowControls.tsx`、`styles.css`、`tauri.conf.json`、`settings` | S2-10 | 5–7d（可并行） | Win10/11 100–200% 无偏移；macOS 红绿灯不重叠；Linux 可拖动 |
 | S2-12 | 标题栏兼容模式 + 窗口状态 + a11y：`custom/native` 设置（重启生效）、尺寸/位置记忆、按钮 aria-label/键盘/高对比 | `SettingsModal.tsx`、`hooks/useTitleBarMode.ts`、`App.tsx`、`tauri-plugin-window-state` | S2-10/S2-11 | 2–3d | 切回原生可恢复；重启位置正确；键盘全流程 |
 | S2-13 | 标题栏验收：三平台截图、Snap Layouts 限制说明、840×560 复验、AGENTS/README 更新 | 文档 + 手测 | S2-11/S2-12 | 2–3d | 标题栏 DoD 全部通过 |
@@ -123,6 +123,8 @@
 | S2-09 | v1.2 发布准备：性能基线、体积记录、rc/正式 tag | 版本文件 | 全部 | 1d | 发版 DoD |
 
 **风险**：Griffel 与 Tailwind reset 冲突、CSP、WebKitGTK 兼容、图标迁移；自绘标题栏另见 [`TITLEBAR-PLAN.zh-CN.md`](TITLEBAR-PLAN.zh-CN.md)（Win11 Snap Layouts 丢失、Wayland 拖拽、macOS 红绿灯、DPI/多屏）。按 B1–B4 分批合并，保留回滚 tag。
+
+**执行顺序**：T1 spike（2–3d，可与 S2-01 并行）→ S2-01 Fluent 基础 → S2-10 的 T2 核心 → S2-11 三平台适配（可并行）→ S2-12/T6 → S2-13/T7。T1 为 No-Go 时回退系统标题栏，不阻塞 Fluent 迁移。
 
 ### Sprint 3：v1.3.0 效率与日志（3–4 周）
 

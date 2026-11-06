@@ -1,6 +1,6 @@
 # 自绘标题栏计划（跨平台）
 
-> 状态：**规划中，未实现**。
+> 状态：**方案已确认（macOS 保留原生红绿灯），T1 spike 待执行**。
 > 目标版本：**v1.2.0**（与 Fluent UI 迁移同批，先做壳层再做业务面板）。
 > 关联：[`OPTIMIZATION-PLAN.zh-CN.md`](OPTIMIZATION-PLAN.zh-CN.md) §5.5、[`EXECUTION-PLAN.zh-CN.md`](EXECUTION-PLAN.zh-CN.md) Sprint 2。
 > 决策变更：本计划**取代**原“三平台保留原生标题栏、不自绘”的决策（§5.4.1 第 4 条）。
@@ -106,7 +106,7 @@
 
 | ID | 任务 | 工期 | 依赖 | 验收 |
 |---|---|---|---|---|
-| **T1** | 三平台 spike：Win/Linux `decorations:false`、macOS `Overlay`；最小可拖动标题栏；验证 resize/全屏/多显示器/Snap 限制 | 2–3d | S2-01 基础设施 | 三平台可拖动/缩放；记录 Snap Layouts、Wayland、DPI 结论 |
+| **T1** | 三平台 spike：Win/Linux `decorations:false`、macOS `Overlay`；最小可拖动标题栏；验证 resize/全屏/多显示器/Snap 限制；产出 `TITLEBAR-SPIKE-NOTES` | 2–3d | S2-01 基础设施（可并行） | 三平台可拖动/缩放；记录 Snap Layouts、Wayland、DPI 结论；Go/No-Go |
 | **T2** | 核心组件：`TitleBar`/`WindowControls`/`useWindowControls`/平台能力；亮暗/高对比；i18n | 3–4d | T1 | 三平台按钮/双击/状态正确；键盘可达 |
 | **T3** | Windows 适配：DPI/多屏/最大化图标/边缘 resize/标题栏高度；Mica 透明背景联动 | 2–3d | T2 | Win10/11 100–200% 无偏移；Mica 开/关可读 |
 | **T4** | macOS 适配：原生红绿灯安全区/全屏/隐藏标题/菜单快捷键；不遮挡 | 2–3d | T2 | 红绿灯不重叠；全屏/退出正常 |
@@ -115,6 +115,46 @@
 | **T7** | 验收与文档：三平台截图、a11y/高对比、性能、AGENTS/README、发布说明 | 2–3d | T3–T6 | DoD 全部通过；有回滚 tag |
 
 **总工期**：单人约 3–4 周；与 Fluent B1/B3 并行可压到约 2 周。建议顺序：T1 → T2 → T3/T4/T5 并行 → T6 → T7。
+
+### 5.1 T1 spike 执行方案（下一步）
+
+> 先做 T1，不改业务 UI；用最小原型验证窗口壳层，避免 T2 做完才发现平台阻塞。
+
+**分支与产出**
+- 分支：`feature/titlebar-spike`（从 `develop` 拉；**不合并 main**，原型可弃）。
+- 产出：
+  - `docs/TITLEBAR-SPIKE-NOTES.zh-CN.md`：平台、系统版本、实验步骤、截图/录屏、结论、阻塞项。
+  - 原型代码（仅 spike 分支）：最小可拖动标题栏 + 三个窗口按钮 + 双击最大化。
+  - 配置结论：平台配置文件（`tauri.windows.conf.json` / `tauri.macos.conf.json` / `tauri.linux.conf.json`）还是运行时 `set_decorations`；capabilities 需要哪些权限。
+  - 更新本计划 T2/T3/T4/T5 的风险与任务。
+
+**实验矩阵**
+
+| 平台 | 系统/环境 | 必测项 |
+|---|---|---|
+| Windows | Win10 + Win11；100%/125%/150%/200% DPI；双屏 | 拖动、双击最大化、最小/最大/关闭、边缘 resize、全屏、Snap Layouts 悬停、Mica 背景 |
+| macOS | 13/14/15（Intel/ARM 尽可能各一台） | 原生红绿灯位置/安全区、全屏、⌘W/⌘M/⌘Q、拖动、resize、隐藏标题 |
+| Linux | Ubuntu GNOME X11 + Wayland；KDE X11/Wayland | 拖动、双击最大化、resize、平铺 WM（sway/i3）、阴影/边框、无原生菜单 |
+
+**步骤**
+1. 建 spike 分支；只加窗口配置 + 最小 `TitleBar`，不接业务状态。
+2. 验证 Tauri 平台配置合并：Windows/Linux `decorations:false`；macOS `decorations:true` + `titleBarStyle: Overlay` + `hiddenTitle` + `trafficLightPosition`。
+3. 加 `data-tauri-drag-region`、`startDragging()` 兜底、双击切换最大化、最大化状态订阅。
+4. 补 capabilities 权限并验证 `minimize/toggleMaximize/close/isMaximized`。
+5. 逐平台记录：截图、DPI/多屏、Snap 悬停、Wayland 拖动、全屏退出；填写 notes。
+6. 输出 Go/No-Go 与 T2 任务拆分；清理 spike 分支或保留只读 tag。
+
+**Go / No-Go 标准**
+- Windows：Win10/11 150% 下可拖动、resize、全屏；输入区无死区；Snap Layouts 丢失已记录并接受或有方案。
+- macOS：原生红绿灯不重叠；全屏/退出正常；系统菜单快捷键不被抢占。
+- Linux：GNOME X11 与 Wayland 至少可拖动/resize；平铺 WM 不遮挡。
+- 任一平台“无法拖动/无法 resize/全屏无法退出” → **No-Go**：保留系统标题栏，或该平台单独走原生标题栏（平台差异策略）。
+
+**环境限制**
+- 当前开发机是 Windows，只能完整验证 Windows；macOS/Linux 需要你的实机/虚拟机，或 CI 构建后本地安装验证（CI 不跑 GUI）。
+- spike 不发布、不合并 main；结论写入文档后再决定 T2。
+
+**排期**：2–3 天。建议顺序：**T1（2–3d）→ Fluent B1（3–5d）→ T2（3–4d）**；T1 与 B1 也可并行，但 T2 必须等两者完成。
 
 ## 6. 风险与缓解
 
