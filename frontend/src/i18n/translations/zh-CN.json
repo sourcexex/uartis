@@ -230,7 +230,20 @@
     "glassStandard": "标准",
     "glassStrong": "强",
     "reduceMotion": "减少动效",
-    "reduceMotionDesc": "关闭过渡与非必要动画"
+    "reduceMotionDesc": "关闭过渡与非必要动画",
+    "console": "控制台",
+    "consoleBackground": "控制台背景",
+    "consoleBackgroundDesc": "日志区域的背景颜色",
+    "consoleTheme": "跟随主题",
+    "consoleNavy": "深海蓝",
+    "consoleForest": "森林绿",
+    "consolePlum": "葡萄紫",
+    "consoleWarm": "暖纸",
+    "consoleBlack": "纯黑",
+    "consoleCustom": "自定义",
+    "consoleCustomColor": "自定义颜色",
+    "consoleFontSize": "控制台字号",
+    "consoleFontSizeDesc": "日志文字大小"
   },
   "common": {
     "text": "文本",

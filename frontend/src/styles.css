@@ -105,6 +105,10 @@
     --app-ease-standard: cubic-bezier(0.2, 0, 0, 1);
     --app-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
     --app-font-mono: 'SF Mono', 'Menlo', 'Monaco', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    --app-console-bg: var(--app-bg-main);
+    --app-console-fg: var(--app-text-primary);
+    --app-console-muted: var(--app-text-tertiary);
+    --app-console-font-size: 14px;
   }
 
   /* Light Theme */
@@ -239,6 +243,43 @@
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* Console (log) background presets. Text tokens stay paired for contrast. */
+  [data-console-bg='navy'] {
+    --app-console-bg: #0b1a2a;
+    --app-console-fg: #dbeafe;
+    --app-console-muted: #93c5fd;
+  }
+
+  [data-console-bg='forest'] {
+    --app-console-bg: #0c1f17;
+    --app-console-fg: #d1fae5;
+    --app-console-muted: #6ee7b7;
+  }
+
+  [data-console-bg='plum'] {
+    --app-console-bg: #1b1026;
+    --app-console-fg: #f3e8ff;
+    --app-console-muted: #d8b4fe;
+  }
+
+  [data-console-bg='warm'] {
+    --app-console-bg: #f5efe6;
+    --app-console-fg: #1f1b16;
+    --app-console-muted: #6b5e52;
+  }
+
+  [data-console-bg='black'] {
+    --app-console-bg: #000000;
+    --app-console-fg: #e5e5e5;
+    --app-console-muted: #a3a3a3;
+  }
+
+  [data-console-bg='custom'] {
+    --app-console-bg: var(--app-console-custom-bg, #101820);
+    --app-console-fg: var(--app-console-custom-fg, #ffffff);
+    --app-console-muted: var(--app-console-custom-fg, #ffffff);
   }
 
   * {
