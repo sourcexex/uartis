@@ -201,3 +201,14 @@
 - 验证：tsc / ESLint / Prettier / Vitest（9）/ Vite build / Tauri NSIS 构建通过。
 - 未做：完整键盘/屏幕阅读器全流程、其它 Popover/Tooltip 统一、亮/暗/高对比截图基线、FPS 记录。
 
+
+
+### V5 毛玻璃性能与回退（2026-11-06，基础完成，FPS 待实测）
+
+- 新增 `utils/glass.ts`：检测 `backdrop-filter` 支持、系统 `prefers-reduced-transparency`，并按“用户显式设置 > 系统偏好 > 不支持回退”决定初始状态。
+- `ThemeContext` 初始化时读取上述规则，并设置 `data-glass-supported`；设置里的“减少透明”在不支持的环境自动置为开启且禁用开关。
+- CSS 增加 `prefers-reduced-transparency: reduce` 回退；移除 `.app-shell` 的 `background-attachment: fixed`（减少滚动重绘风险）。
+- 新增 Vitest：glass fallback 3 例，总计 12 通过。
+- 基线：Vite CSS 44.14 kB / gzip 8.14 kB；JS gzip 145.40 kB；冷启动到窗口 190/77/71 ms（首次/缓存后两次，Windows 150% DPI）。
+- 未做：1000 行滚动/窗口拖动/缩放 FPS 实测、WebKitGTK 实机冒烟、亮/暗/高对比三套截图；见 `docs/UI-PERF-NOTES.zh-CN.md`。
+

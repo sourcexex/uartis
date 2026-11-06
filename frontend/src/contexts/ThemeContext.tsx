@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { themeColors } from '../theme/tokens';
 import type { ThemeColors } from '../theme/tokens';
+import { prefersReducedTransparency, resolveReducedTransparency, supportsBackdropFilter } from '../utils/glass';
 
 export type { ThemeColors } from '../theme/tokens';
 
@@ -22,7 +23,9 @@ interface ThemeProviderProps {
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [themeMode, setThemeModeState] = useState<ThemeMode>('dark');
-  const [reducedTransparency, setReducedTransparencyState] = useState<boolean>(false);
+  const [reducedTransparency, setReducedTransparencyState] = useState<boolean>(() =>
+    resolveReducedTransparency(localStorage.getItem('uartis_reduced_transparency'), prefersReducedTransparency())
+  );
 
   // Load saved theme from localStorage on mount
   useEffect(() => {
@@ -30,7 +33,6 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
       setThemeModeState(savedTheme);
     }
-    setReducedTransparencyState(localStorage.getItem('uartis_reduced_transparency') === 'true');
   }, []);
 
   // Apply theme to document root
@@ -43,6 +45,10 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   useEffect(() => {
     document.documentElement.setAttribute('data-reduced-transparency', reducedTransparency ? 'true' : 'false');
   }, [reducedTransparency]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-glass-supported', supportsBackdropFilter() ? 'true' : 'false');
+  }, []);
 
   const setThemeMode = (mode: ThemeMode) => {
     setThemeModeState(mode);

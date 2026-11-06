@@ -15,6 +15,7 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTheme } from '../contexts/ThemeContext';
+import { supportsBackdropFilter } from '../utils/glass';
 import { useLanguage, Language } from '../i18n';
 import {
   TextEncoding,
@@ -98,6 +99,7 @@ interface SettingsModalProps {
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => {
   const { themeMode, setThemeMode, colors, reducedTransparency, setReducedTransparency } = useTheme();
+  const glassSupported = supportsBackdropFilter();
   const { language, setLanguage, t } = useLanguage();
   const [timezone, setTimezoneState] = useState<TimezoneOption>(loadTimezone);
   const [logPath, setLogPath] = useState('~/Documents/UartisLogs');
@@ -478,7 +480,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                   {t('settings.reduceTransparencyDesc')}
                 </span>
               </div>
-              <Switch checked={reducedTransparency} onCheckedChange={setReducedTransparency} />
+              <Switch
+                checked={reducedTransparency}
+                onCheckedChange={setReducedTransparency}
+                disabled={!glassSupported}
+              />
             </div>
           </div>
 
