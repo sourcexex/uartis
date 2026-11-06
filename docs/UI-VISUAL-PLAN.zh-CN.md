@@ -191,4 +191,13 @@
 - 验证：tsc / ESLint / Prettier / Vitest（9）/ Vite build / Tauri NSIS 构建通过；暗色截图确认标题栏、侧栏、状态栏与控件层次。
 - 未做：高对比/键盘全流程、其它弹窗统一玻璃、标题栏 platform 配置去闪烁、FPS 基线（V4–V6）。
 
+### V4 浮层/对话框与可访问性（2026-11-06，已完成基础层）
+
+- `DialogContent` 新增 `glass` 变体；设置弹窗、ConfirmDialog 统一玻璃外壳，内容区保持实底。
+- 弹窗遮罩改为半透明 + 轻微 backdrop blur；Dialog 边框/圆角/阴影统一 token。
+- 新增 `prefers-contrast: more`：禁用玻璃 blur、使用实底与更强边框。
+- 新增 `prefers-reduced-motion: reduce`：全局降低动画/过渡时长。
+- 侧栏折叠/展开与设置按钮补 `aria-label`；标题栏按钮已有标签。
+- 验证：tsc / ESLint / Prettier / Vitest（9）/ Vite build / Tauri NSIS 构建通过。
+- 未做：完整键盘/屏幕阅读器全流程、其它 Popover/Tooltip 统一、亮/暗/高对比截图基线、FPS 记录。
 

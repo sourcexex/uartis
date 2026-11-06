@@ -425,15 +425,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        disableFocusTrap
-        className="max-w-[500px] max-h-[80vh] overflow-hidden flex flex-col p-0"
-        style={{
-          backgroundColor: 'var(--app-glass-bg-strong)',
-          backdropFilter: 'blur(var(--app-glass-blur)) saturate(var(--app-glass-saturate))',
-          WebkitBackdropFilter: 'blur(var(--app-glass-blur)) saturate(var(--app-glass-saturate))',
-        }}
-      >
+      <DialogContent disableFocusTrap glass className="max-w-[500px] max-h-[80vh] overflow-hidden flex flex-col p-0">
         <DialogHeader
           className="px-4 py-3 border-b"
           style={{ backgroundColor: colors.bgHeader, borderColor: colors.borderDark }}

@@ -822,6 +822,7 @@ function App() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={t('sidebar.expandSidebar')}
                       onClick={toggleSidebarCollapse}
                       className="h-9 w-9"
                       style={{ color: colors.textSecondary }}
@@ -857,6 +858,7 @@ function App() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label={t('sidebar.collapseSidebar')}
                           onClick={toggleSidebarCollapse}
                           className="h-7 w-7"
                           style={{ color: colors.textSecondary }}
@@ -875,6 +877,7 @@ function App() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          aria-label={t('settings.title')}
                           onClick={() => setShowSettings(true)}
                           className="h-7 w-7"
                           style={{ color: colors.textSecondary }}
