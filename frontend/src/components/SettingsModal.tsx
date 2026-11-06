@@ -97,7 +97,7 @@ interface SettingsModalProps {
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => {
-  const { themeMode, setThemeMode, colors } = useTheme();
+  const { themeMode, setThemeMode, colors, reducedTransparency, setReducedTransparency } = useTheme();
   const { language, setLanguage, t } = useLanguage();
   const [timezone, setTimezoneState] = useState<TimezoneOption>(loadTimezone);
   const [logPath, setLogPath] = useState('~/Documents/UartisLogs');
@@ -428,7 +428,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
       <DialogContent
         disableFocusTrap
         className="max-w-[500px] max-h-[80vh] overflow-hidden flex flex-col p-0"
-        style={{ backgroundColor: colors.bgSidebar }}
+        style={{
+          backgroundColor: 'var(--app-glass-bg-strong)',
+          backdropFilter: 'blur(var(--app-glass-blur)) saturate(var(--app-glass-saturate))',
+          WebkitBackdropFilter: 'blur(var(--app-glass-blur)) saturate(var(--app-glass-saturate))',
+        }}
       >
         <DialogHeader
           className="px-4 py-3 border-b"
@@ -470,6 +474,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 </Button>
               </div>
             </Card>
+            <div
+              className="flex items-center justify-between gap-4 px-2 py-2"
+              style={{ borderTop: `1px solid ${colors.borderLight}` }}
+            >
+              <div className="flex flex-col">
+                <span className="text-sm" style={{ color: colors.textPrimary }}>
+                  {t('settings.reduceTransparency')}
+                </span>
+                <span className="text-xs" style={{ color: colors.textTertiary }}>
+                  {t('settings.reduceTransparencyDesc')}
+                </span>
+              </div>
+              <Switch checked={reducedTransparency} onCheckedChange={setReducedTransparency} />
+            </div>
           </div>
 
           {/* Regional Section */}

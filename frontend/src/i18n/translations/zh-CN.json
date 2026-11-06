@@ -207,7 +207,9 @@
     "networkError": "无法检查更新，请检查网络连接。",
     "noReleases": "暂无可用版本",
     "noExeFound": "最新版本中未找到兼容的安装程序",
-    "retryDownload": "重试下载"
+    "retryDownload": "重试下载",
+    "reduceTransparency": "减少透明",
+    "reduceTransparencyDesc": "使用纯色表面代替毛玻璃效果"
   },
   "common": {
     "text": "文本",

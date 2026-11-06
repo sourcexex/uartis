@@ -75,9 +75,8 @@ const StatusBar: React.FC<StatusBarProps> = ({ connectionStatus, selectedPort, c
 
   return (
     <div
-      className="h-7 px-3 flex items-center justify-between text-[11px] select-none z-20"
+      className="h-7 px-3 flex items-center justify-between text-[11px] select-none z-20 glass-surface-strong"
       style={{
-        backgroundColor: colors.bgSidebar,
         borderTop: `1px solid ${colors.borderDark}`,
         color: colors.textTertiary,
       }}

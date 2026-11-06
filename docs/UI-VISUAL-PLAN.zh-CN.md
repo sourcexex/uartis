@@ -172,3 +172,12 @@
 - 验证：`tsc` / ESLint / Prettier / Vitest（9）/ Vite build / Tauri NSIS 构建通过；Windows 150% 冒烟截图正常。
 - 未做：玻璃表面实际应用、设置里的“减少透明”开关、亮/暗/高对比截图基线（留到 V2/V4/V6）。
 
+### V2 壳层与毛玻璃应用（2026-11-06，已完成基础应用）
+
+- 根容器新增 `.app-shell` 环境渐变（非常克制的品牌色径向光），让玻璃表面有可感知的底层层次。
+- 侧栏接入 `.glass-surface`；状态栏接入 `.glass-surface-strong`；移除两处内联不透明背景。
+- 设置弹窗改为 `--app-glass-bg-strong` + `backdrop-filter`，内容区保持实底；日志/编辑区仍不透明。
+- 设置 → 外观新增“减少透明”（`data-reduced-transparency`），持久化到 localStorage；CSS 自动回退纯色并关闭 blur。
+- 暗色主题冒烟截图通过；设置弹窗截图确认玻璃层次与文案。
+- 未做：顶部全局工具条（当前还没有全局 Toolbar）、标题栏玻璃（等 T2）、其它 Dialog 统一、亮/暗/高对比三套基线、FPS 记录（V6）。
+
