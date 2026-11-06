@@ -28,6 +28,16 @@ macOS 打包需要 `src-tauri/icons/` 里的 `icon.png` 和 `icon.icns`，不能
 
 能用 `frontend/src/components/ui/` 里已有组件时，用 shadcn，不要手写原生 `<button>` / `<select>`。快捷命令列表下拉保持自定义（行内重命名）。日志区不要换成 `ScrollArea`，自动滚底依赖原生 `scrollTop`。
 
+## i18n（每次新增/修改功能必须检查）
+
+所有用户可见文案必须走 `useTranslation` + `frontend/src/i18n/translations/{en,zh-CN}.json`，**禁止硬编码中文/英文**，包括按钮、标题、placeholder、`aria-label`、`title`、Toast、Dialog、错误提示。
+
+- 新增/修改功能时，在 **en 和 zh-CN 两个文件同一提交**里补齐文案；key 与 `{placeholder}` 必须完全一致。
+- 改完运行 `cd frontend && npm test`（`i18n/translations.test.ts` 会校验 key/placeholder 齐平）和 `npm run typecheck`。
+- 后端返回的英文错误如果会展示给用户，前端需映射到 i18n；不要把技术错误原样当 UI 文案。
+- 新 namespace 用现有层级（如 `settings.*`、`titleBar.*`），不要建无意义的一级 key。
+
+
 ## 版本号
 
 发版时下面四个必须相同：
