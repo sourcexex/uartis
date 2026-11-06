@@ -1,13 +1,15 @@
 # T1 自绘标题栏 Spike 记录（Windows）
 
 > 日期：2026-11-06
-> 分支：`feature/titlebar-spike`（从 `develop` 拉，仅原型，不合并 main）
+> 分支：`feature/titlebar-spike`（已合入 `develop`；本文保留 T1 Windows 验证记录）
 > 环境：Windows 11 x64，150% 缩放，WebView2，Tauri 2.12.5
-> 关联：[`TITLEBAR-PLAN.zh-CN.md`](TITLEBAR-PLAN.zh-CN.md) §5.1
+> 关联：[`TITLEBAR-PLAN.zh-CN.md`](TITLEBAR-PLAN.zh-CN.md) §5.1, §6
 
 ![Windows 自绘标题栏](assets/titlebar-spike-windows.png)
 
-## 1. 本次实现
+## 1. 本次实现（T1 原型）
+
+> 后续 T2 已改用平台配置：Windows/Linux 在 `tauri.*.conf.json` 创建窗口时即 `decorations:false`，macOS 在 `tauri.macos.conf.json` 保留 Overlay/红绿灯；Rust `setup` 中的 `set_decorations` 已移除。
 
 - `src-tauri/tauri.conf.json`
   - macOS：`decorations: true` + `titleBarStyle: "Overlay"` + `hiddenTitle: true` + `trafficLightPosition`（保留原生红绿灯）。
