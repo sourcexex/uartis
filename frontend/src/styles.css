@@ -266,6 +266,23 @@
       transition-duration: 0.01ms !important;
     }
   }
+
+  @media (prefers-reduced-transparency: reduce) {
+    :root,
+    [data-theme='light'] {
+      --app-glass-bg: var(--app-bg-surface);
+      --app-glass-bg-strong: var(--app-bg-surface);
+      --app-glass-blur: 0px;
+      --app-glass-saturate: 100%;
+    }
+
+    .glass-surface,
+    .glass-surface-strong {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      box-shadow: none;
+    }
+  }
 }
 
 @layer components {
@@ -273,7 +290,6 @@
     background-image:
       radial-gradient(1100px 520px at 8% -10%, var(--app-ambient-1), transparent 65%),
       radial-gradient(800px 500px at 100% 110%, var(--app-ambient-2), transparent 60%);
-    background-attachment: fixed;
   }
 
   /*
