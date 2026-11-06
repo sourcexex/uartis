@@ -50,7 +50,7 @@ const SEND_ERROR_TOAST_INTERVAL_MS = 3000;
 const DEFAULT_SIDEBAR_WIDTH = 320;
 const MIN_SIDEBAR_WIDTH = 200;
 const COLLAPSED_SIDEBAR_WIDTH = 48;
-const AUTO_COLLAPSE_THRESHOLD = 640;
+const AUTO_COLLAPSE_THRESHOLD = 900;
 const MIN_LOG_VIEWER_HEIGHT = 150;
 const DEFAULT_SEND_PANEL_MIN_HEIGHT = SEND_PANEL_MIN_HEIGHTS.normalText;
 const DEFAULT_LOG_VIEWER_RATIO = 0.65;
@@ -277,6 +277,24 @@ function App() {
       setLogViewerHeight(Math.max(MIN_LOG_VIEWER_HEIGHT, maxLogViewerHeight));
     }
   }, [sendPanelMinHeight, logViewerHeight]);
+
+  // A persisted log height can be too tall after the window shrinks; clamp it
+  // on every resize so the send panel never gets squeezed off-screen.
+  useEffect(() => {
+    const clampLogViewerHeight = () => {
+      const container = mainContentRef.current;
+      if (!container) return;
+      setLogViewerHeight((current) => {
+        if (current === null) return current;
+        const max = container.getBoundingClientRect().height - sendPanelMinHeight;
+        return Math.max(MIN_LOG_VIEWER_HEIGHT, Math.min(current, max));
+      });
+    };
+
+    clampLogViewerHeight();
+    window.addEventListener('resize', clampLogViewerHeight);
+    return () => window.removeEventListener('resize', clampLogViewerHeight);
+  }, [sendPanelMinHeight]);
 
   // Window resize handler for auto-collapse
   useEffect(() => {
