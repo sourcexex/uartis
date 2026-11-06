@@ -69,5 +69,7 @@
 - 新增 `tauri.windows.conf.json`、`tauri.linux.conf.json`、`tauri.macos.conf.json`，每个平台提供完整窗口对象，避免数组合并歧义。
 - 删除 Rust `setup` 中的 `set_decorations(false)`，窗口创建时即为无边框，消除首帧原生标题栏闪烁。
 - Windows 150% DPI 构建 + 启动截图确认：自绘标题栏、按钮、玻璃与控制区正常，无原生 caption。
+- T2 组件拆分：新增 `hooks/useWindowControls.ts` 与 `components/WindowControls.tsx`；`TitleBar` 只负责布局/安全区，按钮标签走 i18n（`titleBar.*`）。
+- Windows 再次截图确认拆分后按钮/玻璃/布局无回归；`tsc`/lint/format/Vitest（12）/Vite+NSIS build 通过。
 - macOS/Linux 仍需实机验证；若平台配置未按预期合并，回退方案是恢复 Rust `set_decorations` 并记录。
 

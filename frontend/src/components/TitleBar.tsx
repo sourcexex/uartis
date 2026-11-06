@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Copy, Minus, Square, X } from 'lucide-react';
 import { isMacPlatform } from '../utils/platform';
+import { useWindowControls } from '../hooks/useWindowControls';
+import WindowControls from './WindowControls';
 
 export interface TitleBarColors {
   bgHeader: string;
@@ -18,68 +16,17 @@ interface TitleBarProps {
 }
 
 /**
- * T1 spike: a minimal custom title bar.
+ * Custom title bar.
  *
- * - Windows/Linux: the native decorations are removed in the Rust setup hook,
- *   so this bar owns dragging and the three caption buttons.
- * - macOS: the window keeps native decorations with `titleBarStyle: overlay`
- *   and `hiddenTitle`, so the traffic lights stay native and this component
- *   only draws the content area (with a left safe area for them).
- *
- * The bar is intentionally self-contained and does not touch app state; the
- * real component will live in the Fluent shell.
+ * - Windows/Linux: platform configs remove native decorations, so this bar owns
+ *   dragging (via `data-tauri-drag-region`) and the caption buttons.
+ * - macOS: native decorations remain with `titleBarStyle: overlay` and
+ *   `hiddenTitle`; the traffic lights stay native and this component only
+ *   draws the content area, leaving a safe area on the left.
  */
 export default function TitleBar({ colors }: TitleBarProps) {
   const isMac = isMacPlatform();
-  const appWindow = useMemo(() => getCurrentWindow(), []);
-  const [maximized, setMaximized] = useState(false);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-
-    const sync = async () => {
-      try {
-        const value = await appWindow.isMaximized();
-        if (!disposed) setMaximized(value);
-      } catch {
-        // Not running inside Tauri (e.g. plain `vite` preview): ignore.
-      }
-    };
-
-    void sync();
-    appWindow
-      .onResized(() => {
-        void sync();
-      })
-      .then((stop) => {
-        if (disposed) {
-          stop();
-        } else {
-          unlisten = stop;
-        }
-      })
-      .catch(() => {
-        // No window event API outside Tauri.
-      });
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [appWindow]);
-
-  const minimize = useCallback(() => {
-    void appWindow.minimize().catch(console.error);
-  }, [appWindow]);
-
-  const toggleMaximize = useCallback(() => {
-    void appWindow.toggleMaximize().catch(console.error);
-  }, [appWindow]);
-
-  const close = useCallback(() => {
-    void appWindow.close().catch(console.error);
-  }, [appWindow]);
+  const { maximized, minimize, toggleMaximize, close } = useWindowControls();
 
   return (
     <div
@@ -103,50 +50,18 @@ export default function TitleBar({ colors }: TitleBarProps) {
       </span>
 
       {!isMac && (
-        <div className="ml-auto flex items-center h-full" onDoubleClick={(event) => event.stopPropagation()}>
-          <CaptionButton label="Minimize" colors={colors} onClick={minimize}>
-            <Minus size={14} />
-          </CaptionButton>
-          <CaptionButton label={maximized ? 'Restore' : 'Maximize'} colors={colors} onClick={toggleMaximize}>
-            {maximized ? <Copy size={12} /> : <Square size={12} />}
-          </CaptionButton>
-          <CaptionButton label="Close" colors={colors} onClick={close} danger>
-            <X size={14} />
-          </CaptionButton>
-        </div>
+        <WindowControls
+          maximized={maximized}
+          onMinimize={minimize}
+          onToggleMaximize={toggleMaximize}
+          onClose={close}
+          colors={{
+            textSecondary: colors.textSecondary,
+            bgHover: colors.bgHover,
+            danger: colors.danger,
+          }}
+        />
       )}
     </div>
-  );
-}
-
-interface CaptionButtonProps {
-  label: string;
-  colors: TitleBarColors;
-  onClick: () => void;
-  danger?: boolean;
-  children: ReactNode;
-}
-
-function CaptionButton({ label, colors, onClick, danger, children }: CaptionButtonProps) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      className="flex items-center justify-center h-full w-[46px] transition-colors"
-      style={{
-        color: hovered ? 'var(--app-on-accent)' : colors.textSecondary,
-        backgroundColor: hovered ? (danger ? colors.danger : colors.bgHover) : 'transparent',
-      }}
-    >
-      {children}
-    </button>
   );
 }

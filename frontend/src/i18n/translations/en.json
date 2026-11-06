@@ -240,5 +240,11 @@
     "endingNone": "None",
     "deleteListTitle": "Delete this command list?",
     "deleteListDescription": "All commands in this list will be removed."
+  },
+  "titleBar": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
   }
 }

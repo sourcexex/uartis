@@ -240,5 +240,11 @@
     "endingNone": "无",
     "deleteListTitle": "删除这个命令列表？",
     "deleteListDescription": "列表中的所有命令都会被删除。"
+  },
+  "titleBar": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原",
+    "close": "关闭"
   }
 }
