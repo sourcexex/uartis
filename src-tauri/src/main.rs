@@ -630,6 +630,10 @@ fn main() {
             if let Err(error) = logger::init(app.handle()) {
                 eprintln!("failed to initialise file logger: {error}");
             }
+            // Windows/Linux decorations are disabled in the platform-specific
+            // Tauri config (tauri.windows.conf.json / tauri.linux.conf.json) so
+            // the first frame is already borderless. macOS keeps native
+            // decorations + overlay traffic lights in tauri.macos.conf.json.
             spawn_frame_pump(app);
             Ok(())
         })

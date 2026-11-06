@@ -56,8 +56,13 @@ interface LogViewerProps {
 }
 
 const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync, isConnected }) => {
-  const { colors } = useTheme();
+  const { colors, directionBackground } = useTheme();
   const { t } = useTranslation();
+  // Text/border keep the semantic TX/RX colors; only the row tint is optional.
+  const txColor = colors.accent;
+  const rxColor = colors.success;
+  const txBackground = directionBackground ? colors.logSentBg : 'transparent';
+  const rxBackground = directionBackground ? colors.logReceivedBg : 'transparent';
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   /** Identity of the last rendered entry — changes even when the capped
@@ -598,7 +603,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
           key={`${logIndex}-${match.startPos}`}
           style={{
             backgroundColor: isCurrentMatch ? colors.warning : colors.accent,
-            color: isCurrentMatch ? '#000' : colors.textPrimary,
+            color: isCurrentMatch ? colors.matchText : colors.textPrimary,
             borderRadius: '2px',
             padding: '0 1px',
           }}
@@ -626,7 +631,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
         style={{ backgroundColor: colors.bgHeader, borderBottom: `1px solid ${colors.borderDark}` }}
       >
         {/* Row 1 */}
-        <div className="h-9 px-4 flex items-center justify-between">
+        <div className="min-h-9 px-4 py-1 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2" style={{ color: colors.textSecondary }}>
             <Terminal size={16} style={{ color: colors.textTertiary }} />
             <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>
@@ -638,7 +643,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
           </div>
 
           <div
-            className="flex rounded-md p-0.5 border"
+            className="flex flex-wrap items-center gap-0.5 rounded-md p-0.5 border"
             style={{ backgroundColor: colors.bgInput, borderColor: colors.borderLight }}
           >
             <Button variant="ghost" size="xs" className="h-6 text-xs gap-1" onClick={openSearch}>
@@ -701,10 +706,10 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
 
         {/* Row 2 */}
         <div
-          className="h-8 px-4 flex items-center justify-between"
+          className="min-h-8 px-4 py-1 flex flex-wrap items-center justify-between gap-2"
           style={{ borderTop: `1px solid ${colors.borderLight}` }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Format Select */}
             <div className="flex items-center gap-1.5">
               <span className="text-xs" style={{ color: colors.textTertiary }}>
@@ -761,7 +766,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
           </div>
 
           {/* Recording Checkboxes */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -865,10 +870,14 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
       <div
         ref={logContainerRef}
         className="flex-1 overflow-y-auto scrollbar-thin p-1"
-        style={{ backgroundColor: colors.bgMain }}
+        style={{
+          backgroundColor: 'var(--app-console-bg)',
+          color: 'var(--app-console-fg)',
+          fontSize: 'var(--app-console-font-size)',
+        }}
       >
         {logs.length === 0 ? (
-          <div className="flex items-center justify-center h-full" style={{ color: colors.textTertiary }}>
+          <div className="flex items-center justify-center h-full" style={{ color: 'var(--app-console-muted)' }}>
             <div className="text-center">
               <Terminal size={48} className="mx-auto mb-4 opacity-50" />
               <p className="text-lg">{t('logViewer.noData')}</p>
@@ -894,8 +903,8 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
                   }}
                   className="py-1 px-2 rounded-[4px] transition-colors duration-150"
                   style={{
-                    borderLeft: `2px solid ${log.direction === 'Sent' ? colors.accent : colors.success}`,
-                    backgroundColor: log.direction === 'Sent' ? colors.logSentBg : colors.logReceivedBg,
+                    borderLeft: `2px solid ${log.direction === 'Sent' ? txColor : rxColor}`,
+                    backgroundColor: log.direction === 'Sent' ? txBackground : rxBackground,
                   }}
                 >
                   <div className="flex items-start gap-2">
@@ -903,7 +912,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
                       <span
                         className="text-xs select-none font-mono"
                         style={{
-                          color: colors.textTertiary,
+                          color: 'var(--app-console-muted)',
                           opacity: 0.5,
                           minWidth: `${Math.max(String(logs.length).length, 3)}ch`,
                           textAlign: 'right',
@@ -913,19 +922,19 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
                       </span>
                     )}
                     {showTimestamps && (
-                      <span className="text-xs select-none" style={{ color: colors.textTertiary, opacity: 0.6 }}>
+                      <span className="text-xs select-none" style={{ color: 'var(--app-console-muted)', opacity: 0.6 }}>
                         {renderTimestamp(log.timestamp, index)}
                       </span>
                     )}
                     <span
                       className="font-bold text-xs uppercase select-none"
-                      style={{ color: log.direction === 'Sent' ? colors.accent : colors.success }}
+                      style={{ color: log.direction === 'Sent' ? txColor : rxColor }}
                     >
                       {log.direction === 'Sent' ? 'TX' : 'RX'}
                     </span>
                     <span
-                      className="flex-1 break-all font-mono text-sm whitespace-pre-wrap"
-                      style={{ color: colors.textPrimary }}
+                      className="flex-1 break-all font-mono whitespace-pre-wrap"
+                      style={{ color: 'var(--app-console-fg)', fontSize: 'var(--app-console-font-size)' }}
                     >
                       {renderTextWithHighlights(log.display_text ?? formatData(log.data), index)}
                     </span>
@@ -964,11 +973,11 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync
       >
         <div className="flex gap-4">
           <span className="flex items-center">
-            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: colors.accent }}></div>
+            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: txColor }}></div>
             {t('logViewer.tx')}: {sentCount}
           </span>
           <span className="flex items-center">
-            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: colors.success }}></div>
+            <div className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: rxColor }}></div>
             {t('logViewer.rx')}: {receivedCount}
           </span>
         </div>

@@ -21,7 +21,7 @@
 | 功能 | 基本盘（参数/HEX/日志/命令/校验/分段/记录/更新）已齐；缺 **多会话、文件发送、X/YMODEM、Modbus、绘图、DTR/RTS 手控、断线重连、CSV/JSON 导出、网络转发** | 竞品矩阵 §2 |
 | 工程化 | Windows Rust 代码在 CI 中**从未编译**；release 不复用 CI 且 `push main` 不跑 CI；`Cargo.lock`/`package-lock.json` 不入库；无 lint/fmt 门禁（`cargo fmt --check` 68 处不过）；仓库**无 tag、无 develop、远端为空**、发布链路从未演练 | `ci.yml:5-9,19-23`、`release.yml:37-54`、`.gitignore:4,13`、`git ls-remote` 空 |
 
-**视觉方向（已确认）**：引入 **Fluent UI React v9 全量迁移**，Windows/macOS/Linux 同一套组件与 token；Mica 仅 Windows 11 且设置里可选（默认关）。详见 §5.4。
+**视觉方向（已确认）**：保留 shadcn/Radix + Tailwind，通过设计 token、组件精修、自绘标题栏和克制的毛玻璃提升观感；**不引入 Fluent UI，也不做 WinUI 重写**。Mica 仅 Windows 11 且设置里可选（默认关）。详见 §5.4。
 
 **功能全集（R2 已合并）**：R1 + R2 共盘点 **279 项功能**（[`FEATURE-CATALOG.zh-CN.md`](FEATURE-CATALOG.zh-CN.md)），本规划已把可做项排到 v2.1，剩余标注"观察/不做"并给理由；R2 新增的字符映射、时间戳格式族、端口锁、RTS/DTR 脉冲、日志轮转、快照、工程文件、回放、raw PDU、RFC2217、协议模板、Modbus、波形、脚本/断言、MCP 均已纳入。
 
@@ -29,8 +29,8 @@
 
 - **Sprint 0（1.5–2 天）** 工程门禁归位：提交锁文件、fmt/clippy/typecheck/lint/test 进 CI、Windows+Linux 编译 job、版本单源、清死代码与死依赖。
 - **Sprint 1（约 5–7 天）→ v1.1.0「稳定版」** 修完 12 个 P1 + 3 个高 ROI 体验项（导出、日志上限、危险确认），补跨会话/格式化回归测试；**本版不动 UI 体系**。
-- **Sprint 2（约 5–6 周）→ v1.2.0「Fluent UI 版」** §5.4 B1–B4 全量迁移（FluentProvider/token → 基础控件 → 业务面板/壳层 → 清理），跨平台验收，Mica 可选开关。
-- **Sprint 3（约 3–4 周）→ v1.3.0「效率版」** 日志工具条、发送计划、文件发送、快速命令、⌘K、虚拟列表（基于 Fluent 组件）。
+- **Sprint 2（约 4–5 周）→ v1.2.0「视觉优化版」** §5.4 V1–V6：设计 token → 壳层/标题栏 → 控件四态 → 浮层/设置 → 毛玻璃调优；跨平台验收，Mica 可选开关。
+- **Sprint 3（约 3–4 周）→ v1.3.0「效率版」** 日志工具条、发送计划、文件发送、快速命令、⌘K、虚拟列表（基于统一设计 token 与现有 shadcn 组件）。
 - **Sprint 4（约 4–5 周）→ v1.4.0「连接与协议版」** DTR/RTS/Break、断线重连、TX 队列、记录 v2 + 回放、会话持久化、TCP/UDP 桥。
 - **Sprint 5+（v2.0）** 多会话标签、Modbus RTU 主站、协议帧模板/字段视图、实时绘图、记录回放、自动应答；差异化再看 XMODEM/YMODEM、脚本化/CLI/MCP。
 - **Sprint 6（v2.1）** 专业/自动化：Modbus 从站/ASCII/TCP、解码插件、断言/报告、fuzz、告警/Historian、可审计 MCP + CLI/API。
@@ -303,7 +303,7 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 | 版本 | 主题 | 内容 | 验收标志 |
 |---|---|---|---|
 | **v1.1.0**（1–2 周） | 稳定与可信 | Sprint 1 全 P1；导出 CSV/JSON+保存框；日志上限单源；危险确认；GBK 校验；DTR/RTS/Break；CRC32/Modbus-CRC16；发送历史；行尾选择；fmt/clippy/tsc/lint/test 门禁；更新器 SHA256；CSP | 重连不丢帧、满缓冲仍自动滚动、Windows 大包可发、导出三格式、CI 全绿 |
-| **v1.2.0**（5–6 周） | **Fluent UI 版（跨平台一致）** | §5.4 B1–B4：Fluent UI React v9 全量替换 shadcn/Radix、FluentProvider + 品牌 ramp、light/dark/system、设置改为分类页、顶部 Toolbar、组件画廊、图标迁移、依赖清理；**Mica 设置开关（Win11 可选，默认关）**；a11y/对比度；跨平台（Win/macOS/Linux）验收；CSP 放行 Griffel | 三平台截图验收；shadcn/Radix 依赖清零；bundle 增量有记录；Mica 开/关可回退；核心链路回归通过 |
+| **v1.2.0**（4–5 周） | **视觉优化版（跨平台一致）** | §5.4 V1–V6：设计 token/主题收敛、自绘标题栏、壳层分层、控件四态精修、浮层/设置、克制的毛玻璃、a11y/对比度、三平台验收；**Mica 设置开关（Win11 可选，默认关）** | 三平台截图验收；无 Fluent/WinUI 依赖；毛玻璃可关闭；核心链路回归通过 |
 | **v1.3.0**（3–4 周） | 效率与手感 | 日志工具条（暂停/方向+关键词过滤/时间戳格式/会话分隔/丢帧统计/复制行/Hex 查看）；统一发送计划；文件发送；快速命令完整度；⌘K；虚拟列表阶段 1；i18n 插值；错误处理统一 | 键盘全流程可用；1000 行按键 <50ms；840×560 无裁剪；WCAG AA 关键项 |
 | **v1.4.0**（4–5 周） | 连接与协议 | 断线重连；TX 队列 + 进度事件；记录 v2 + 回放；会话配置持久化；TCP/UDP 桥；DTR 进阶（RS-485 方向）；多语言扩展 | 无人值守 24h 不掉链；抓包-回放闭环；串口服务器可连 |
 | **v2.0**（6–10 周） | 平台化 | 多会话标签；Modbus RTU 主站 + 寄存器表 + 总线监视；协议帧模板/字段视图；实时绘图；记录回放；自动应答；raw PDU；XMODEM/YMODEM；CLI 原型 | 多设备并行；工业现场可用；可被脚本/外部工具驱动 |
@@ -327,11 +327,11 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 
 ## 5. 界面与交互优化规划
 
-### 5.1 设计系统收敛（并入 §5.4 Fluent 迁移）
+### 5.1 设计系统收敛（并入 §5.4 视觉优化）
 
 现状是 shadcn CSS 变量、ThemeContext inline hex、Tailwind `macos-*` 三轨并存；`styles.css:124-247` 约 120 行死类；硬编码颜色绕过主题（`SendPanel.tsx:634` `#f59e0b`、`SettingsModal.tsx:775` `text-green-500`）；`index.html:9` 写死黑底。
 
-**目标**：以 **Fluent UI React v9** 作为唯一组件与主题体系（详见 §5.4）——`FluentProvider` + 品牌 ramp + light/dark/system；删除 ThemeContext 内联 hex 与死 CSS；`html { color-scheme }` 防 FOUC；三级文字对比度 ≥4.5:1；字体按平台回退（Windows `Segoe UI Variable`、macOS `SF Pro`、Linux `Noto Sans`、中文 `PingFang SC`/`Microsoft YaHei`/`Noto Sans SC`）；补齐高对比度与 `prefers-reduced-motion`。shadcn/Radix 在 §5.4 的 B1–B4 迁移中逐步移除。
+**目标**：保留 **shadcn/Radix + Tailwind**，以 CSS design token 作为唯一视觉来源（详见 §5.4）——语义色/字体/间距/圆角/阴影/动效；删除 ThemeContext 内联 hex 与死 CSS；`html { color-scheme }` 防 FOUC；三级文字对比度 ≥4.5:1；字体按平台回退（Windows `Segoe UI Variable`、macOS `SF Pro`、Linux `Noto Sans`、中文 `PingFang SC`/`Microsoft YaHei`/`Noto Sans SC`）；补齐高对比度与 `prefers-reduced-motion`。**不替换组件库**。
 
 ### 5.2 目标信息架构
 
@@ -344,124 +344,72 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 浮层：⌘K 命令面板 / 设置(左分类+搜索+恢复默认+快捷键) / 危险操作确认 / Toast(节流+action)
 ```
 
-视觉与壳层按 **§5.4 Fluent UI React v9**：顶部 Toolbar、设置分类页、原生标题栏（不自绘）、Win11 可选 Mica；日志区仍用原生滚动容器。
+视觉与壳层按 **§5.4 UI 视觉优化**：顶部 Toolbar、设置分类页、**自绘标题栏（跨平台混合方案，详见 §5.5）**、克制的毛玻璃、Win11 可选 Mica；日志区仍用原生滚动容器与实底背景。
 
 ### 5.3 改造优先级
 
 | 优先级 | 改造 | 验收 |
 |---|---|---|
-| P0 | **Fluent UI React v9 全量迁移（§5.4 B1–B4，v1.2 主线）**：FluentProvider/token → 基础控件 → 业务面板/壳层 → 清理；跨平台一致 + Mica 可选 | 三平台截图验收；shadcn/Radix 依赖清零；bundle 增量有记录 |
+| P0 | **UI 视觉优化（§5.4 V1–V6，v1.2 主线）**：token/主题 → 壳层/标题栏 → 控件四态 → 浮层/设置 → 克制的毛玻璃；不换组件库 + Mica 可选 | 三平台截图验收；无 Fluent/WinUI 依赖；毛玻璃可关闭；性能不劣化 |
 | P1 | 危险操作确认（清空/删列表/断连，正在录制或定时发送时文案说明后果） | 三处弹窗；键盘可取消 |
 | P1 | 导出升级：菜单 + `save()` + TXT/CSV/JSON + toast action | 三格式文件内容正确 |
 | P1 | 日志自动滚动修复 + 页脚丢帧/TX-RX 累计（后端已有统计未展示） | 满缓冲仍跟随；页脚数字实时 |
 | P2 | 日志工具条（暂停/方向/关键词过滤/时间戳格式/会话分隔） | 1000 行过滤无卡顿 |
 | P2 | 发送区统一：行尾、发送计划、历史 ↑、粘贴识别 hex、字节编辑器入口 | 日常发送 3 步内完成 |
-| P2 | 设置重构：分类 + 搜索 + 恢复默认 + 快捷键页 + 关于（随 Fluent 迁移重写） | 设置项 3 次点击内到达 |
+| P2 | 设置重构：分类 + 搜索 + 恢复默认 + 快捷键页 + 关于（随视觉优化重写） | 设置项 3 次点击内到达 |
 | P2 | ⌘K 命令面板 + 快捷键注册表（按浮层层级路由，修 ⌘F 逃逸） | 全键盘可完成连接/发送/导出/清空 |
-| P2 | a11y：icon 按钮 `aria-label`、Field/Label 关联、分隔条键盘、日志 `role=log tabIndex=0`（Fluent 组件自带基础 a11y） | 仅键盘可完成全流程 |
+| P2 | a11y：icon 按钮 `aria-label`、Field/Label 关联、分隔条键盘、日志 `role=log tabIndex=0`（沿用 shadcn/Radix 基础 a11y） | 仅键盘可完成全流程 |
 | P2 | 响应式：日志工具条折行、快捷命令列折叠、StatusBar 截断、删除 640 死分支或下调 minWidth | 840×560 全部控件可见可点 |
 | P2 | 虚拟列表阶段 1：`React.memo` + 日志行 memo + `content-visibility:auto`（保持 1000 行） | 按键/搜索不掉帧 |
 | P3 | 虚拟列表阶段 2：`@tanstack/react-virtual`（不用 react-window，正文换行会变高） | 10k 行 60fps |
 | P3 | 窗口大小/位置记忆（`tauri-plugin-window-state`）、跟随系统主题 | 重启恢复 |
 
-### 5.4 Fluent UI React v9 迁移规划（全量引入，跨平台一致）
+### 5.4 UI 视觉优化与毛玻璃（v1.2，替代原 Fluent 迁移）
 
-**已确认决策**：① 引入微软官方 `@fluentui/react-components` v9，**全量替换**现有 shadcn/Radix 组件层；② **保证跨平台**——Windows/macOS/Linux 使用同一套 Fluent 组件与 token，仅字体、密度、窗口材质按平台适配；③ **Mica 若可用（Windows 11）则在设置里作为可选开关**，默认关闭，非 Win11/非 Windows 自动隐藏。
+**决策变更（2026-11）**：不再引入 Fluent UI React v9、不重写 WinUI；保留 React 18 + shadcn/Radix + Tailwind，通过设计 token、组件精修、自绘标题栏和**克制的毛玻璃**提升观感。完整方案、token 规格、玻璃使用范围、V1–V6 任务与 DoD 见 [`UI-VISUAL-PLAN.zh-CN.md`](UI-VISUAL-PLAN.zh-CN.md)。
 
-**可行性**：Fluent UI React v9 是纯 Web React 组件库（Griffel 运行时 CSS-in-JS），运行在 Tauri 的 WebView2 / macOS WKWebView / Linux WebKitGTK 上；Mica 用 Tauri 2.12.5 内置窗口效果（`Effect::Mica/MicaDark/MicaLight` + `WindowEffectsConfig`）实现，**不需要额外引入 `window-vibrancy`**（可作为旧版本回退方案，Tauri 内部也依赖它 0.8.1）。
+**原则**
+1. **保留现有组件库**：shadcn/Radix 继续作为业务组件层；不换库、不引入 Griffel/Fluent 依赖。
+2. **token 化**：颜色/字体/间距/圆角/阴影/动效统一到 CSS 变量；清理 ThemeContext 内联 hex 与死 CSS；亮/暗/system + 高对比。
+3. **毛玻璃只用于壳层/浮层**：标题栏、侧栏、工具条、状态栏、对话框、Toast、设置外壳；**日志正文/发送编辑区保持实底**。
+4. **无 `backdrop-filter` 自动回退纯色**；提供“减少透明/纯色模式”设置；Windows 11 Mica 仍可作为可选增强（默认关）。
+5. **性能优先**：glass 表面不超过 4 个可见层，blur ≤20px，禁止嵌套/滚动容器大面积模糊；1000 行滚动与窗口拖动实测。
+6. **可访问性**：正文对比度 ≥4.5:1，焦点环可见，键盘可完成全流程，尊重 `prefers-reduced-motion`。
 
-#### 5.4.1 跨平台原则（硬约束）
+**玻璃范围**
 
-1. **组件层零 Windows 假设**：所有平台差异收敛到 `utils/platform.ts` 与 Rust 端 `#[cfg]`/运行时检测，业务组件不出现 `navigator.platform` 判断（现有 `platform.ts` 可复用，但改为显式平台能力对象）。
-2. **字体按平台回退**：Windows `Segoe UI Variable Text/Display` → `Segoe UI`；macOS `SF Pro Text/Display`；Linux 用系统 UI 字体（`Noto Sans`/`Ubuntu`/`Cantarell`）；中文统一 `PingFang SC`/`Microsoft YaHei`/`Noto Sans SC`。
-3. **主题用 FluentProvider**：`webLightTheme`/`webDarkTheme` 为基础，用 `createLightTheme`/`createDarkTheme` 生成品牌 ramp；支持"跟随系统 + 手动亮/暗"，尊重 `prefers-color-scheme` 与 `prefers-reduced-motion`。
-4. **窗口保留原生标题栏**：三平台都不自绘标题栏，避免丢失拖动/双击最大化/Snap Layouts/系统菜单/macOS 红绿灯；只用窗口材质（Mica）增强，不做无边框窗口。
-5. **Mica 是可选增强**：仅 Windows 11 且检测可用时出现在设置中；关闭/不支持时回退纯色。macOS/Linux 不显示该设置项。
-6. **CI 覆盖三平台编译**：至少 `windows-latest` + `macos-latest` 跑 `cargo test`，`ubuntu-latest` 跑 `cargo check` + 前端构建（Linux 运行库按 Tauri 文档装），避免"只在 Windows 能编译"。
+| 区域 | 是否 glass |
+|---|---|
+| 标题栏 / 侧栏 / 顶部工具条 / 状态栏 | ✅（固定壳层） |
+| 对话框 / Popover / Toast / 设置外壳 | ✅（内容实底） |
+| 日志正文 / 发送编辑区 / 列表行 | ❌（保持实底、可读、可选中） |
 
-#### 5.4.2 迁移策略：绞杀者模式（strangler），分 4 批合并
+**任务**
 
-- **保持导入路径稳定**：`@/components/ui/*` 继续作为业务层入口，内部用 Fluent 重写（或新建 `ui/fluent/*` 后用 barrel 重导出），业务面板只改少量 props，降低一次性 diff。
-- **短期共存**：shadcn/Radix 与 Fluent 可并存数周；Griffel 与 Tailwind 可共存，但要处理 CSS reset 冲突（Fluent 自带 reset，Tailwind preflight 需关掉或收敛 scope）。
-- **Tailwind 定位**：建议保留 Tailwind **仅做布局/间距/尺寸工具类**，组件视觉全部交给 Fluent；后续可选全面 Griffel 化。
-- **图标**：新增用 `@fluentui/react-icons`，按面板逐步替换 lucide，最后移除 lucide 依赖。
-- **AGENTS.md 同步修订**：组件规范从"优先 shadcn `ui/`"改为"优先 `@fluentui/react-components`"；保留"日志区不用 ScrollArea、用原生滚动"等既有约束。
-- **CSP 预留**：Griffel 运行时注入 `<style>`，Sprint 0 收紧 CSP 时需允许 `style-src 'unsafe-inline'`（或评估 nonce/hash 方案），否则 Fluent 样式失效。
+| ID | 内容 | 工期 |
+|---|---|---|
+| V1 | Token/主题基础，清理硬编码与死 CSS，亮暗/system | 2–3d |
+| V2 | 壳层：标题栏（与 T1/T2 合并）、侧栏、工具条、状态栏分层 + glass token | 3–4d |
+| V3 | 控件四态/焦点精修（按钮/输入/下拉/开关/复选/对话框/Toast） | 3–4d |
+| V4 | 浮层与设置：glass 对话框/Popover/设置分类/材质开关 | 2–3d |
+| V5 | 毛玻璃调优：范围/强度/回退、FPS/WebKitGTK 冒烟 | 2–3d |
+| V6 | 三平台截图、亮暗/高对比、a11y、文档 | 2–3d |
 
-| 批次 | 内容 | 工期 | 验收 |
+**总工期**：单人约 2–3 周，与标题栏 T2 并行可压缩。**不做**：Fluent/WinUI 迁移、全屏毛玻璃、日志区模糊、组件库替换。
+
+### 5.5 自绘标题栏与窗口壳层（跨平台，v1.2）
+
+**决策**：取代原“三平台保留原生标题栏”的决策。采用 **自绘内容 + 平台原生控件** 的混合方案，默认自绘，设置提供“系统标题栏（兼容模式）”回退。完整设计、平台矩阵、任务 T1–T7、风险与 DoD 见 [`TITLEBAR-PLAN.zh-CN.md`](TITLEBAR-PLAN.zh-CN.md)。
+
+| 平台 | 外壳 | 窗口控件 | 关键风险 |
 |---|---|---|---|
-| **B1 基础设施** | 引入 `@fluentui/react-components` + `@fluentui/react-icons`；`FluentProvider` + 品牌 ramp + light/dark/system；统一字体栈；Toast/Portal 根；删除 ThemeContext 内联色；CSP 放行 Griffel；Tailwind preflight 收敛 | 3–5 天 | 全应用被 FluentProvider 包裹；主题切换无闪烁；`tsc`/构建通过；三平台可启动 |
-| **B2 基础控件** | 用 Fluent 重写 `ui/`：Button、Input、Textarea、Dropdown、Combobox、Checkbox、Switch、Dialog、Tooltip、ProgressBar、MessageBar、Menu、Spinner、Field/Label、Toast；保留原导出路径 | 1–1.5 周 | 组件画廊逐项验收；键盘/禁用/加载/错误四态齐；a11y 通过 |
-| **B3 业务面板与壳层** | LogViewer、SendPanel、QuickCommandPanel、ConfigPanel、PortSelector、StatusBar、Settings（分类 + 搜索）、⌘K 命令面板、顶部 Toolbar；移除 shadcn/Radix 引用；日志区保持原生滚动 | 1.5–2 周 | 核心链路回归（连接/收发/导出/设置）；840×560 可用；三平台截图 |
-| **B4 清理与验收** | 删除 shadcn/Radix/scroll-area/separator 依赖与死 CSS；图标迁移；bundle/性能测量；a11y/对比度；跨平台 QA；**Mica 开关（Win11 可选）**；文档/AGENTS 更新 | 3–5 天 | 依赖干净；bundle 增量有记录；Win/macOS/Linux 验收；Mica 开/关可回退 |
+| Windows 10/11 | `decorations: false` + 自绘栏 | 自绘最小化/最大化/关闭（右） | Snap Layouts 可能丢失；DPI/多屏 |
+| macOS 13+ | `titleBarStyle: Overlay` + `hiddenTitle` | **原生红绿灯**（不画假按钮） | 红绿灯安全区/全屏 |
+| Linux X11/Wayland | `decorations: false` + 自绘栏 | 自绘按钮（右） | Wayland 拖拽/缩放、平铺 WM |
 
-#### 5.4.3 Mica 可选开关设计（Windows 11）
+**任务**：T1 三平台 spike（2–3d）→ T2 核心组件（3–4d）→ T3/T4/T5 三平台适配并行（各 2–3d）→ T6 兼容模式/窗口状态（1–2d）→ T7 验收文档（2–3d）。与 UI 视觉优化 V1/V2 同批，先做壳层；单人 3–4 周，双人约 2 周。
 
-| 项 | 方案 |
-|---|---|
-| 可用性检测 | Rust 新增命令 `get_platform_info` 返回 `{ os, os_version, mica_available }`：`cfg(windows)` + Windows 11 版本检测（`windows-version`/`os_info` 或 Tauri 平台 API）；同时返回 `supports_transparency` |
-| 设置入口 | 设置 → 外观 → "窗口材质（Windows 11 Mica）" 开关；仅 `mica_available` 时渲染；说明"可能影响截图/远程桌面性能" |
-| 应用方式 | 启动时读取偏好：开启则通过 Tauri 窗口效果 API 应用 `WindowEffectsConfig { effects: [Effect::Mica], .. }`，关闭则应用空效果/清除（`set_effects` 的实际签名以 2.12.5 为准）；通常需窗口 `transparent: true` + 根容器配合（透明背景 + 实底内容），以实机验证为准 |
-| 回退 | 非 Win11/非 Windows：不显示、不应用，始终纯色；`transparent` 窗口下必须有实底，避免内容不可读 |
-| 风险 | 截图/录屏/远程桌面/部分显卡驱动异常；Win11 个别构建拖动性能；未来 Tauri API 变更。保留"关闭材质"逃生口，默认关闭 |
-
-#### 5.4.4 关键 token 规格（Fluent v9 theme 对齐）
-
-| 类别 | 规格 |
-|---|---|
-| 字体 | Windows：`Segoe UI Variable Text`（小字号）/`Segoe UI Variable Display`（大标题）→ 回退 `Segoe UI`；macOS：`SF Pro Text/Display`；Linux：`Noto Sans`/`Ubuntu`；中文：`PingFang SC`/`Microsoft YaHei`/`Noto Sans SC` |
-| 字号/行高 | caption1 12/16、body1 14/20、subtitle2 16/22、title3 20/26、largeTitle 28/36（Fluent 2 ramp）；日志区保持 12–13px 等宽 |
-| 颜色 | 直接用 Fluent v9 theme token（`colorNeutralBackground1..6`、`colorNeutralForeground1..4`、`colorNeutralStroke1/2`、`colorBrandBackground`、`colorStatus*`）；品牌色二选一：沿用现有 `#0A84FF` 或 Fluent 默认 `#0F6CBD`，用 `createLightTheme/createDarkTheme` 生成 ramp 后全局统一 |
-| 圆角 | 控件 4px、卡片/对话框 8px、圆形按钮 50%（Fluent `borderRadiusMedium/Large`） |
-| 间距 | Fluent spacing ramp：4/8/12/16/20/24/32；组件内边距 8–12 |
-| 高程 | Fluent `shadow4/8/16`；浮层/对话框按 Fluent elevation 规范 |
-| 动效 | Fluent `durationFast=150ms`/`durationNormal=250ms` + `curveAccelerate/Decelerate`；尊重 `prefers-reduced-motion` |
-| 焦点 | Fluent 自带 focus indicator（2px 品牌色外框），保证键盘可见 |
-
-#### 5.4.5 组件映射（现有 → Fluent v9）
-
-| 现有 | Fluent v9 目标 | 备注 |
-|---|---|---|
-| `Button`（4 变体） | `Button`（appearance: primary/secondary/subtle/transparent + icon） | 保留尺寸 S/M |
-| `Select` | `Dropdown` / `Combobox` | 长波特率列表用 Combobox 支持输入过滤 |
-| `Input` / `Textarea` | `Input` / `Textarea` | 配合 `Field` + `Label` |
-| `Dialog` | `Dialog` + `DialogSurface` + `DialogBody` + `DialogTitle` + `DialogActions` | 危险操作确认复用 |
-| `Alert` | `MessageBar` | 连接丢失/录制中/丢帧提示 |
-| `Switch` | `Switch` | 录制/时间戳/自动滚动 |
-| `Checkbox` | `Checkbox` | 保留 indeterminate |
-| `Tooltip` | `Tooltip` | 单根 Provider |
-| `Progress` | `ProgressBar` | 下载/文件发送 |
-| 日志区 | 自定义虚拟列表 + Fluent token（保留原生 `scrollTop`，不用 DataGrid） | AGENTS 约束；虚拟化见 B3/后续 |
-| 快捷命令下拉 | `Menu` + `MenuTrigger`/`MenuPopover`/`MenuItem` | 保留行内重命名 |
-| 设置弹窗 | `Dialog` + `TabList` 分类 + `Accordion`/`Field` | 从长滚动升级为分类设置 |
-| 顶栏 | `Toolbar` + `ToolbarGroup` + `Button` | 连接/发送/导出/⌘K/设置 |
-| Toast | `Toaster` + `Toast`（v9 较新版本；若版本不含则保留 sonner 并重皮肤） | 需核对实际导出 |
-| 图标 | `@fluentui/react-icons` | 过渡期与 lucide 共存 |
-
-#### 5.4.6 验收与度量
-
-- **跨平台**：Windows 10/11、macOS、Linux（构建+冒烟）三套截图；字体/间距/换行无溢出；无 Windows-only 行为。
-- **视觉**：light/dark/高对比三套；控件四态；圆角/描边/阴影与 Fluent 参考一致。
-- **可访问性**：焦点环可见、Tab 顺序、对比度 AA、`prefers-reduced-motion`。
-- **性能**：首屏、按键延迟、1000 行日志滚动不劣化；Mica 开启/关闭对拖动/缩放无可感知劣化（远程桌面/录屏单独测）。
-- **体积与 CSP**：记录 Fluent 引入后的 gzip 增量；CSP 允许 Griffel（`style-src 'unsafe-inline'`）且无安全回退。
-- **回退**：保留"关闭 Mica"开关；Fluent 迁移按批次可独立回滚。
-
-#### 5.4.7 风险
-
-| 风险 | 影响 | 规避 |
-|---|---|---|
-| Griffel 与 Tailwind reset/优先级冲突 | 样式局部错乱 | B1 先处理 preflight/层级；组件视觉只用 Fluent；分批截图回归 |
-| CSP 与 Griffel 冲突 | 生产环境样式丢失 | Sprint 0 收紧 CSP 时预留 `style-src 'unsafe-inline'`；或用 nonce 渲染器；CI 加 CSP 冒烟 |
-| 全量迁移回归面大 | 功能/交互回退 | 按 B1–B4 分批合并、每批测试 + 截图基线；保留一版回滚 tag |
-| bundle 增大 | 启动变慢 | 按需 import（Fluent 支持 tree-shaking）；测量并设阈值；图标按需引入 |
-| Linux WebKitGTK 兼容性 | 部分 CSS/滚动差异 | CI 构建 + 冒烟；关键布局用 Fluent token 而非浏览器特性 |
-| Fluent v9 无 WinUI 的 NavigationView 等专有布局控件 | 需要自建 | 用 `TabList`/`Menu`/自定义 + Fluent 基础件组合；表格类可用 `DataGrid` 或自定义 |
-| Mica 在部分环境异常 | 截图/远程桌面/性能 | 默认关闭、设置可关、回退纯色；仅 Win11 显示 |
-| 图标体系迁移 | 视觉不一致/工作量 | 分面板迁移，过渡期共存，最后移除 lucide |
-| React 版本联动 | Fluent v9 对 React 19 支持需确认 | 保持 React 18（v1.2 不升级）；升级 React 19 单独专项验证 peerDependencies |
-
-**默认决策（实现时按此执行）**：保留 Tailwind 做布局、组件视觉全部 Fluent；原生标题栏；Mica 默认关闭；品牌色沿用 `#0A84FF`；Linux 先保证编译与冒烟，不纳入正式发布。
+**关键约束**：只让标题栏空白区可拖，交互元素显式 no-drag；双击空白区最大化；最大化图标跟随状态；高对比/键盘/屏幕阅读器可用；Mica 开启时标题栏实底兜底；840×560 最小尺寸复验。
 
 ---
 
@@ -471,15 +419,15 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 
 | 阶段 | 内容 | 工期 | 依赖 | 交付 |
 |---|---|---|---|---|
-| **Sprint 0** | 工程门禁：提交 `Cargo.lock` + `package-lock.json`（CI 改 `npm ci` + npm cache）；CI 加 `windows-latest` 的 `cargo check/test`、`ubuntu-latest` 的 `cargo check`（按 Tauri 文档装 Linux 依赖）、`cargo fmt --check`、`clippy -D warnings`、`push main` 触发、PR 级"四版本一致"job；release 复用同一套检查并消费 `should_build`；gate 要求 tag == `origin/main` HEAD（或 CI 绿灯 + semver 递增）；加 eslint/prettier/vitest 与 `typecheck/lint/test` 脚本；`tauri-plugin-log` 落文件；CSP 收紧但预留 Griffel 的 `style-src 'unsafe-inline'`；Release 附 `SHA256SUMS`；修 README/AGENTS/LICENSE 漂移；`.gitignore` 文档例外；删死命令/死依赖/死 CSS；`[profile.release]` 调优 | 1.5–2 天 | 无 | CI 全绿（Win/macOS/Linux 编译）、可取证、文档与代码一致 |
+| **Sprint 0** | 工程门禁：提交 `Cargo.lock` + `package-lock.json`（CI 改 `npm ci` + npm cache）；CI 加 `windows-latest` 的 `cargo check/test`、`ubuntu-latest` 的 `cargo check`（按 Tauri 文档装 Linux 依赖）、`cargo fmt --check`、`clippy -D warnings`、`push main` 触发、PR 级"四版本一致"job；release 复用同一套检查并消费 `should_build`；gate 要求 tag == `origin/main` HEAD（或 CI 绿灯 + semver 递增）；加 eslint/prettier/vitest 与 `typecheck/lint/test` 脚本；`tauri-plugin-log` 落文件；CSP 收紧但预留 `style-src 'unsafe-inline'`（现有 React inline style 需要）；Release 附 `SHA256SUMS`；修 README/AGENTS/LICENSE 漂移；`.gitignore` 文档例外；删死命令/死依赖/死 CSS；`[profile.release]` 调优 | 1.5–2 天 | 无 | CI 全绿（Win/macOS/Linux 编译）、可取证、文档与代码一致 |
 | **Sprint 1 → v1.1** | 3.1 的 12 个 P1 + P2 中 BE-05/BE-04/BE-07/BE-06/BE-10/FE-10/FE-11/FE-12 + 跨会话/格式化/导出回归测试 + vitest 覆盖 `useSerialLogs`/`checksum`/`timezone` | 5–7 天 | Sprint 0 | 稳定版可发布 |
-| **Sprint 2 → v1.2** | **Fluent UI React v9 全量迁移（§5.4 B1–B4）**：FluentProvider/品牌 ramp/主题 → 基础控件 → 业务面板与壳层（含设置分类页、⌘K 外壳）→ 清理 shadcn/Radix；跨平台（Win/macOS/Linux）验收；**Mica 可选开关（Win11）**；a11y/对比度；CSP 放行 Griffel | 5–6 周 | Sprint 1 | Fluent UI 版 |
-| **Sprint 3 → v1.3** | 日志工具条、发送计划、文件发送、快速命令完整度、⌘K 命令面板、虚拟列表阶段 1、i18n 完善、错误处理统一（全部基于 Fluent 组件） | 3–4 周 | Sprint 2（组件体系就绪） | 效率版 |
+| **Sprint 2 → v1.2** | **UI 视觉优化（§5.4 V1–V6）**：设计 token/主题收敛 → 自绘标题栏/壳层分层 → 控件四态精修 → 浮层/设置 → 克制的毛玻璃；保留 shadcn/Radix；跨平台（Win/macOS/Linux）验收；**Mica 可选开关（Win11）**；a11y/对比度 | 4–5 周 | Sprint 1 | 视觉优化版 |
+| **Sprint 3 → v1.3** | 日志工具条、发送计划、文件发送、快速命令完整度、⌘K 命令面板、虚拟列表阶段 1、i18n 完善、错误处理统一（基于统一设计 token 与现有 shadcn 组件） | 3–4 周 | Sprint 2（组件体系就绪） | 效率版 |
 | **Sprint 4 → v1.4** | 断线重连、TX 队列、DTR 进阶、记录 v2 + 回放、会话持久化、TCP/UDP 桥 | 4–5 周 | Sprint 3（后端 TX 队列可早于 UI 并行） | 连接版 |
 | **Sprint 5 → v2.0** | 多会话架构、Modbus RTU 主站 + 寄存器表 + 总线监视、协议帧模板/字段视图、实时绘图、记录回放、自动应答、raw PDU、XMODEM/YMODEM、CLI 原型 | 6–10 周 | Sprint 4 | 平台版 |
 | **Sprint 6 → v2.1** | Modbus 从站/ASCII/TCP、协议解码插件（JS 沙箱）、断言/测试报告、fuzz/错误注入、告警/Historian/变换通道、可审计 MCP server + CLI/API、多窗口/操作员模式、DL/T645 | 6–8 周 | Sprint 5 | 专业/自动化版 |
 
-**关键依赖链**：Fluent 迁移（Sprint 2）→ 之后所有新 UI 功能（Sprint 3+）；TX 队列 → 文件发送/定时发送后端化 → Modbus/绘图数据流；generation 化 → 断线重连/多会话；录制 v2 → 回放/脚本；主题/FluentProvider → Mica 与所有新面板。
+**关键依赖链**：UI 视觉优化（Sprint 2）→ 之后所有新 UI 功能（Sprint 3+）；TX 队列 → 文件发送/定时发送后端化 → Modbus/绘图数据流；generation 化 → 断线重连/多会话；录制 v2 → 回放/脚本；设计 token/玻璃材质 → Mica 与所有新面板。
 
 **发布前置（必须最先处理）**：远端仓库当前为空、无 tag、无 develop、发布链路从未跑过。v1.1 前需完成一次"发布演练"——push `main`、按 BRANCHING.md 建 `develop`（或把文档改成单干 main 的简化模型）、打一个 `V1.1.0-rc.1` 预演双平台构建、验证签名/公证/DMG/NSIS 与更新器下载链路，再正式发版。否则第一个正式 Tag 大概率在 CI 里失败。
 
@@ -496,7 +444,7 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 | 视觉回归 | 无 | Win11 light/dark/高对比三套截图基线；关键组件画廊页（Button/Input/Dropdown/Dialog/MessageBar）截图对比；Mica 开/关各一组 |
 | CI 门禁 | macOS `cargo test` + Ubuntu `tsc/build` | 见下方"建议 CI 门禁清单"；核心是补 Windows 编译、fmt/clippy、前端 lint/test、锁文件与发版前置检查 |
 
-**建议 CI 门禁清单**：`version-consistency`（四文件 + tag 匹配，PR 与 tag 都跑）→ `rust-fmt` → `rust-clippy -D warnings` → `rust-test`（macos + windows 矩阵）→ `linux-check`（ubuntu：按 Tauri 文档装 webkit2gtk/udev 等依赖后 `cargo check` + `vite build`，保证 Linux 可编译）→ `frontend`（`npm ci` → `tsc --noEmit` → `eslint` → `prettier --check` → `vitest run` → `vite build`；`npm audit --omit=dev --audit-level=high`）→ `shellcheck` + gate 三条件单测 → `release`（gate 输出 `should_build` 由 build `if:` 消费、build 前跑 test、附 SHA256SUMS + artifact 备份、`environment: release` 审批）。Fluent 迁移后额外加 `csp-smoke`（生产包样式加载 + 控制台无 CSP 报错）。
+**建议 CI 门禁清单**：`version-consistency`（四文件 + tag 匹配，PR 与 tag 都跑）→ `rust-fmt` → `rust-clippy -D warnings` → `rust-test`（macos + windows 矩阵）→ `linux-check`（ubuntu：按 Tauri 文档装 webkit2gtk/udev 等依赖后 `cargo check` + `vite build`，保证 Linux 可编译）→ `frontend`（`npm ci` → `tsc --noEmit` → `eslint` → `prettier --check` → `vitest run` → `vite build`；`npm audit --omit=dev --audit-level=high`）→ `shellcheck` + gate 三条件单测 → `release`（gate 输出 `should_build` 由 build `if:` 消费、build 前跑 test、附 SHA256SUMS + artifact 备份、`environment: release` 审批）。视觉优化后额外加 `csp-smoke` 与 `glass-smoke`（生产包样式加载、控制台无 CSP 报错、无 backdrop-filter 时回退纯色）。
 
 ### 6.3 手测矩阵（Windows/macOS 手测 + Linux 冒烟 × 关键路径）
 
@@ -510,9 +458,9 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 8. 840×560 窗口：全部控件可见可操作；键盘 Tab 走完全流程；⌘F 在设置弹窗内不逃逸。
 9. 亮色启动无黑闪；对比度抽查；macOS 只列 `cu.*`。
 10. 更新检查/下载：篡改 `asset_name`/URL 被拒绝；断网有可读错误。
-11. Fluent 视觉：Win11 上 light/dark/高对比三套截图；控件 normal/hover/pressed/disabled 四态；焦点环可见；`prefers-reduced-motion` 生效。
+11. UI 视觉：Win11 上 light/dark/高对比三套截图；控件 normal/hover/pressed/disabled 四态；焦点环可见；`prefers-reduced-motion` 生效；毛玻璃范围克制（日志区实底）。
 12. Win11 Mica 开/关：拖动、缩放、双击最大化、右键系统菜单、Snap Layouts、多显示器/DPI、远程桌面/截图；关闭后完全恢复纯色。
-13. Mica 可用性检测：Win10/Win11/macOS/Linux 上设置项显示/隐藏正确；透明窗口回退纯色后可读（不自绘标题栏）。
+13. Mica 可用性检测：Win10/Win11/macOS/Linux 上设置项显示/隐藏正确；透明窗口回退纯色后可读（自绘标题栏下也必须有实底兜底）。
 14. macOS/Linux：无 Mica 时纯色回退、原生红绿灯/窗口按钮正常、字体回退正常。
 
 ### 6.4 风险与规避
@@ -524,11 +472,11 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 | CSP 收紧导致 Tauri/资源加载失败 | 白屏 | dev 单独配置、CI 冒烟；按 Tauri 2 官方 CSP 模板逐项放开 |
 | Windows 签名/公证成本 | 更新信任链 | 先 SHA256SUMS + 更新器校验；代码签名作为发布流程独立任务 |
 | 虚拟列表破坏"跨行选中复制" | 用户体验回退 | 数据层提供"复制全部/复制选中范围"；阶段 1 先不虚拟化 |
-| Fluent 全量迁移引发功能/样式回归 | 核心链路回退、跨平台差异 | §5.4 分 B1–B4 四批合并；每批回归核心链路 + 三平台截图；保留一个可回滚 tag |
-| Griffel 与 Tailwind/CSP 冲突 | 生产样式丢失或局部错乱 | B1 先解决 preflight/层级；CSP 预留 `style-src 'unsafe-inline'`；CI 加 CSP/构建冒烟 |
-| Linux WebKitGTK 渲染差异 | Linux 布局/滚动异常 | CI `ubuntu-latest` 编译 + 冒烟；关键布局用 Fluent token；不依赖浏览器专有特性 |
-| Mica/透明窗口与系统行为冲突 | 截图/录屏/远程桌面异常、性能下降 | 默认关闭、仅 Win11 显示、设置可关；保留纯色回退；不做自绘标题栏 |
-| bundle 增大导致启动变慢 | 体验下降 | Fluent 按需 import + 图标按需引入；记录 gzip 增量并设阈值 |
+| 视觉改造引发功能/样式回归 | 核心链路回退、跨平台差异 | §5.4 分 V1–V6 六批合并；每批回归核心链路 + 三平台截图；保留一个可回滚 tag |
+| 毛玻璃/透明层在 WebKitGTK 不支持 | 透明层发灰/不可读 | `@supports` + 实底回退；CI/实机冒烟；设置可关闭透明 |
+| Linux WebKitGTK 渲染差异 | Linux 布局/滚动异常 | CI `ubuntu-latest` 编译 + 冒烟；关键布局用设计 token；不依赖浏览器专有特性 |
+| Mica/透明窗口与系统行为冲突 | 截图/录屏/远程桌面异常、性能下降 | 默认关闭、仅 Win11 显示、设置可关；保留纯色回退；自绘标题栏保留“系统标题栏”兼容模式 |
+| 视觉改造导致渲染变慢 | 体验下降 | 毛玻璃只用于固定壳层；记录 gzip/滚动基线；不做全屏 blur |
 | 文档 `*.md` 被 gitignore | 规划/文档无法入库 | 加 `!docs/**/*.md` 例外并清理规则 |
 
 ### 6.5 明确不做（本轮）
@@ -536,9 +484,9 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 - 不做虚拟串口驱动（Windows 需签名驱动/macOS 需系统扩展，长期负担）。
 - 不先做完整 MQTT/Sparkplug B、3D/FFT/瀑布图、协议插件市场。
 - 不先做脚本引擎（等 CLI/API 抽象稳定）。
-- 不在 v1.1 动多会话架构，也不在 v1.1 引入 Fluent（v1.1 只做稳定性；Fluent 迁移从 v1.2 开始）。
-- 不引入 WinUI 3/XAML 或原生 Windows App SDK 控件（Tauri 架构不支持；只做 Fluent UI React v9 + Win11 Mica 材质）。
-- 不自绘标题栏（保留三平台原生标题栏，避免丢失拖动/最大化/Snap/系统菜单/macOS 红绿灯）。
+- 不在 v1.1 动多会话架构，也不在 v1.1 做 UI 视觉改造（v1.1 只做稳定性；视觉优化从 v1.2 开始）。
+- 不引入 WinUI 3/XAML、Windows App SDK 或 Fluent UI React（Tauri 架构下代价过高；只做现有组件 + 设计 token + 可选 Win11 Mica）。
+- 不做三平台完全自绘（包括 macOS 假红绿灯）；采用“自绘内容 + 平台原生控件”混合方案，并保留系统标题栏兼容模式（详见 §5.5）。
 - 不默认开启 Mica（仅 Win11 且检测可用时在设置中出现，默认关闭，保证截图/远程桌面可回退）。
 - 不牺牲 macOS/Linux：所有 UI 改动必须三平台构建/冒烟验收；不为 Windows 观感引入 Windows-only 行为。
 - 不在 v1.2 同时改 UI 体系与大量业务功能（v1.2 只做迁移 + 必要修复；日志工具条/发送计划等放 v1.3）。
@@ -546,7 +494,7 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 - 不在 v1.x 内置完整工业协议栈（OPC UA/S7/EtherNet-IP/IEC104/CAN）——用协议模板 + 外部工具承接；Modbus 只做 RTU 主站最小闭环。
 - MCP/AI 接口默认关闭、只读优先、分级 consent + 审计；不在 CLI/API 抽象稳定前上线。
 - 不做遥测/账户/云同步（隐私与后端成本），配置共享用导入导出文件。
-- 不改 AGENTS.md 约束下的既有约定（日志区不用 `ScrollArea`、四版本文件同步、发版三条件门禁）；但 **AGENTS.md 的组件规范需在 v1.2 同步改为"优先 `@fluentui/react-components`"**。
+- 不改 AGENTS.md 约束下的既有约定（日志区不用 `ScrollArea`、四版本文件同步、发版三条件门禁）；组件规范继续“优先 shadcn `ui/`”，不引入第二套组件库。
 
 ---
 
@@ -591,16 +539,14 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 - PlatformIO monitor：<https://docs.platformio.org/en/latest/core/userguide/device/cmd_monitor.html>
 - MCP/AI 串口：<https://github.com/es617/serial-mcp-server>、<https://github.com/qarnet/serial-mcp>、<https://github.com/YaoIsAI/SerialRUN>
 
-### 7.4 WinUI / Fluent 视觉方向来源
+### 7.4 视觉与材质参考（仅参考，不引入 Fluent/WinUI）
 
-- Fluent 2 设计系统（token/字体/圆角/动效规范）：<https://fluent2.microsoft.design/>
-- Fluent UI React v9（`@fluentui/react-components`）文档：<https://react.fluentui.dev/> ｜ 源码：<https://github.com/microsoft/fluentui>
-- Fluent v9 主题定制（`createLightTheme`/`createDarkTheme`/`BrandVariants`）：<https://react.fluentui.dev/?path=/docs/theme-theme-designer--docs>
-- Fluent System Icons（`@fluentui/react-icons`）：<https://github.com/microsoft/fluentui-system-icons>
-- Windows 11 设计（WinUI 3 Gallery、控件与材质）：<https://learn.microsoft.com/windows/apps/design/>
+- Fluent 2 设计规范（token/字体/圆角/动效，仅视觉参考）：<https://fluent2.microsoft.design/>
+- Windows 11 设计（WinUI 3 Gallery、控件与材质，仅参考）：<https://learn.microsoft.com/windows/apps/design/>
 - Tauri 2 窗口效果（`Effect::Mica/MicaDark/MicaLight`、`WindowEffectsConfig`，2.12.5 内置）：<https://docs.rs/tauri/latest/tauri/window/enum.Effect.html> ｜ <https://docs.rs/tauri-utils/latest/tauri_utils/config/struct.WindowEffectsConfig.html>
 - Tauri 2 窗口自定义（原生/透明标题栏、拖拽区域、权限）：<https://v2.tauri.app/learn/window-customization/>
 - `window-vibrancy`（Tauri 内部依赖；旧版本或需要更细控制时的回退方案）：<https://github.com/tauri-apps/window-vibrancy>
+- CSS `backdrop-filter`（毛玻璃实现与兼容性）：<https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter>
 
 ### 7.5 功能全集与 R2 调研来源
 
@@ -610,4 +556,4 @@ Webview (React 18) ──invoke 35 命令──▶ Tauri IPC ──▶ AppState
 
 ---
 
-*本规划仅为方案，未改动任何源码/配置/依赖。已确认方向：先稳定（v1.1）→ Fluent UI React v9 全量迁移（v1.2，跨平台 + Mica 可选）→ 效率（v1.3）→ 连接/协议（v1.4）→ 平台化（v2.0）。落地前仍需确认：品牌色（`#0A84FF` vs `#0F6CBD`）与是否保留 Tailwind 做布局。*
+*本规划仅为方案，未改动任何源码/配置/依赖。已确认方向：先稳定（v1.1）→ UI 视觉优化（v1.2，设计 token + 毛玻璃 + 自绘标题栏 + Mica 可选，不引入 Fluent/WinUI）→ 效率（v1.3）→ 连接/协议（v1.4）→ 平台化（v2.0）。落地前仍需确认：品牌色（`#0A84FF` vs `#0F6CBD`）与毛玻璃强度/默认开关。*
