@@ -7,6 +7,7 @@ import ConfigPanel from './components/ConfigPanel';
 import LogViewer from './components/LogViewer';
 import SendPanel, { SEND_PANEL_MIN_HEIGHTS } from './components/SendPanel';
 import StatusBar from './components/StatusBar';
+import TitleBar from './components/TitleBar';
 import SettingsModal from './components/SettingsModal';
 import {
   SerialPortInfo,
@@ -797,6 +798,7 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col" style={{ backgroundColor: colors.bgMain, color: colors.textPrimary }}>
+      <TitleBar colors={colors} />
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}

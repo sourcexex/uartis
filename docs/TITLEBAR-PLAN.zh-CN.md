@@ -1,6 +1,6 @@
 # 自绘标题栏计划（跨平台）
 
-> 状态：**方案已确认（macOS 保留原生红绿灯），T1 spike 待执行**。
+> 状态：**方案已确认（macOS 保留原生红绿灯）；T1 Windows spike 已完成，macOS/Linux 待测**。
 > 目标版本：**v1.2.0**（与 Fluent UI 迁移同批，先做壳层再做业务面板）。
 > 关联：[`OPTIMIZATION-PLAN.zh-CN.md`](OPTIMIZATION-PLAN.zh-CN.md) §5.5、[`EXECUTION-PLAN.zh-CN.md`](EXECUTION-PLAN.zh-CN.md) Sprint 2。
 > 决策变更：本计划**取代**原“三平台保留原生标题栏、不自绘”的决策（§5.4.1 第 4 条）。
@@ -153,6 +153,8 @@
 **环境限制**
 - 当前开发机是 Windows，只能完整验证 Windows；macOS/Linux 需要你的实机/虚拟机，或 CI 构建后本地安装验证（CI 不跑 GUI）。
 - spike 不发布、不合并 main；结论写入文档后再决定 T2。
+
+> Windows spike 结果（2026-11-06）：自绘栏/按钮/双击最大化通过，拖动与 Snap Layouts 待补测；详见 [`TITLEBAR-SPIKE-NOTES.zh-CN.md`](TITLEBAR-SPIKE-NOTES.zh-CN.md) 与截图 `assets/titlebar-spike-windows.png`。
 
 **排期**：2–3 天。建议顺序：**T1（2–3d）→ Fluent B1（3–5d）→ T2（3–4d）**；T1 与 B1 也可并行，但 T2 必须等两者完成。
 
