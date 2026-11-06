@@ -12,13 +12,14 @@
 | # | 决策 | 说明 |
 |---|---|---|
 | D1 | 先稳定后增强 | v1.1 只修 P1 + 低成本闭环，不动 UI 体系 |
-| D2 | UI 全量迁移 **Fluent UI React v9**，跨平台一致 | Windows/macOS/Linux 同一套组件/token；保留 Tailwind 做布局；原生标题栏 |
+| D2 | UI 全量迁移 **Fluent UI React v9**，跨平台一致 | Windows/macOS/Linux 同一套组件/token；保留 Tailwind 做布局；自绘标题栏（混合方案，见 D9） |
 | D3 | Mica 仅 Windows 11，设置里可选、默认关 | Tauri 2.12.5 内置窗口效果；不可用时自动隐藏 |
 | D4 | 协议/行业能力按"内置协议模板 + 插件"做，不内置完整工业栈 | Modbus RTU 主站优先；OPC UA/S7/IEC104/CAN 不做 |
 | D5 | 内核驱动类能力不做 | 虚拟串口驱动、USB 抓包、非侵入嗅探 → 进程内虚拟对端/RFC2217 替代 |
 | D6 | MCP/AI 默认关闭、可审计，v2.1 再上线 | 先有 CLI/API 抽象 |
 | D7 | 品牌色默认沿用 `#0A84FF`；Fluent 迁移后可一行切换 | 备选 `#0F6CBD` |
 | D8 | 交付节奏：每 2–4 周一个可发布版本 | 每版必须过 DoD（见 §2） |
+| D9 | 自绘标题栏（2026-11 追加，取代“保留原生标题栏”） | 自绘内容 + 平台原生控件：macOS 原生红绿灯（`Overlay`/`hiddenTitle`），Windows/Linux 自绘按钮；保留“系统标题栏”兼容模式；详见 [`TITLEBAR-PLAN.zh-CN.md`](TITLEBAR-PLAN.zh-CN.md) |
 
 **范围边界**：v1.x 不做多会话架构、不做 Modbus（v2.0 起）、不做绘图/回放（v1.4 回放、v2.0 绘图）、不做脚本引擎（v2.1）。详见 §7。
 
@@ -103,7 +104,7 @@
 
 **v1.1 不做**：Fluent、多会话、Modbus、绘图、文件发送、XMODEM/YMODEM、记录回放、TCP 网络。避免把稳定版拖成大杂烩。
 
-### Sprint 2：v1.2.0 Fluent UI 迁移（5–6 周）
+### Sprint 2：v1.2.0 Fluent UI 迁移 + 自绘标题栏（5–7 周）
 
 | ID | 任务 | 范围 | 依赖 | 估时 | 验收 |
 |---|---|---|---|---|---|
@@ -114,10 +115,14 @@
 | S2-05 | Mica 可选：Rust `get_platform_info`（os/version/mica_available）；设置开关（默认关）；`set_effects` 应用/清除；透明窗口回退纯色 | `main.rs`、`serial_manager.rs`/新 `platform.rs`、`SettingsModal.tsx`、`tauri.conf.json` | S2-03 | 2–3d | Win11 可开关；Win10/macOS/Linux 隐藏；截图/远程桌面可回退 |
 | S2-06 | a11y/主题：焦点环、Field/Label 关联、icon aria-label、分隔条键盘、日志 `role=log tabIndex=0`、对比度 AA、减少动效 | 全前端 | S2-02/03 | 3–5d | 仅键盘完成全流程；对比度抽查 |
 | S2-07 | 响应式收尾：日志工具条折行、快捷命令列折叠、StatusBar 截断、删除 640 死分支或下调 minWidth | `LogViewer.tsx`、`QuickCommandPanel.tsx`、`StatusBar.tsx`、`tauri.conf.json` | S2-03 | 2–3d | 840×560 无裁剪 |
-| S2-08 | 跨平台验收：Win10/11 + macOS 手测、Linux 构建冒烟；三套截图；CSP/Griffel 冒烟 | CI + 手测 | S2-01..07 | 2–3d | 三平台截图通过；无样式丢失 |
+| S2-10 | 自绘标题栏 T1+T2：三平台 spike（Win/Linux `decorations:false`、macOS `Overlay`/`hiddenTitle`）；`TitleBar`/`WindowControls`/`useWindowControls`；拖拽/双击/最大化状态/主题/i18n | `tauri.conf.json`、`src-tauri/capabilities/*`、新增 `components/TitleBar.tsx`、`WindowControls.tsx`、`hooks/useWindowControls.ts`、`utils/platform.ts`、`App.tsx`、`styles.css` | S2-01 | 4–5d | 三平台可拖动/缩放/全屏；Snap Layouts/Wayland/DPI 结论记录 |
+| S2-11 | 自绘标题栏平台适配：Windows DPI/多屏/Mica 透明背景；macOS 红绿灯安全区/全屏；Linux X11/Wayland、GNOME/KDE 冒烟 | `TitleBar.tsx`、`WindowControls.tsx`、`styles.css`、`tauri.conf.json`、`settings` | S2-10 | 5–7d（可并行） | Win10/11 100–200% 无偏移；macOS 红绿灯不重叠；Linux 可拖动 |
+| S2-12 | 标题栏兼容模式 + 窗口状态 + a11y：`custom/native` 设置（重启生效）、尺寸/位置记忆、按钮 aria-label/键盘/高对比 | `SettingsModal.tsx`、`hooks/useTitleBarMode.ts`、`App.tsx`、`tauri-plugin-window-state` | S2-10/S2-11 | 2–3d | 切回原生可恢复；重启位置正确；键盘全流程 |
+| S2-13 | 标题栏验收：三平台截图、Snap Layouts 限制说明、840×560 复验、AGENTS/README 更新 | 文档 + 手测 | S2-11/S2-12 | 2–3d | 标题栏 DoD 全部通过 |
+| S2-08 | 跨平台验收：Win10/11 + macOS 手测、Linux 构建冒烟；三套截图；CSP/Griffel 冒烟 | CI + 手测 | S2-01..07、S2-10..13 | 2–3d | 三平台截图通过；无样式丢失 |
 | S2-09 | v1.2 发布准备：性能基线、体积记录、rc/正式 tag | 版本文件 | 全部 | 1d | 发版 DoD |
 
-**风险**：Griffel 与 Tailwind reset 冲突、CSP、WebKitGTK 兼容、图标迁移；按 B1–B4 分批合并，保留回滚 tag。
+**风险**：Griffel 与 Tailwind reset 冲突、CSP、WebKitGTK 兼容、图标迁移；自绘标题栏另见 [`TITLEBAR-PLAN.zh-CN.md`](TITLEBAR-PLAN.zh-CN.md)（Win11 Snap Layouts 丢失、Wayland 拖拽、macOS 红绿灯、DPI/多屏）。按 B1–B4 分批合并，保留回滚 tag。
 
 ### Sprint 3：v1.3.0 效率与日志（3–4 周）
 
@@ -270,7 +275,7 @@
 | MQTT/WS/云上行（v1.x） | 依赖 TCP/UDP 与协议层 | v2.x 观察 |
 | 移动端/云账户/遥测 | 维护/隐私/后端成本 | 配置导入导出 |
 | 固件烧录/ISP | 成熟工具已存在 | DTR/RTS 辅助 + 文档 |
-| 自绘标题栏 | 失去系统窗口特性 | 原生标题栏 + Mica 可选 |
+| 三平台完全自绘（含 macOS 假红绿灯） | 违反平台习惯/辅助功能 | 混合方案（macOS 原生红绿灯）+ 系统标题栏兼容模式 |
 
 ---
 
