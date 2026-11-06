@@ -1,6 +1,6 @@
 # 自绘标题栏计划（跨平台）
 
-> 状态：**方案已确认（macOS 保留原生红绿灯）；T1 Windows 已完成并合入 develop；T2 Windows 平台配置完成，macOS/Linux 待测**。
+> 状态：**方案已确认（macOS 保留原生红绿灯）；T1 Windows 已完成并合入 develop；T2 Windows 组件/平台配置完成，macOS/Linux 待测**。
 > 目标版本：**v1.2.0**（与 UI 视觉优化同批，先做壳层再做业务面板）。
 > 关联：[`OPTIMIZATION-PLAN.zh-CN.md`](OPTIMIZATION-PLAN.zh-CN.md) §5.5、[`EXECUTION-PLAN.zh-CN.md`](EXECUTION-PLAN.zh-CN.md) Sprint 2。
 > 决策变更：本计划**取代**原“三平台保留原生标题栏、不自绘”的决策。
