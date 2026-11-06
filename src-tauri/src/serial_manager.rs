@@ -1338,23 +1338,22 @@ fn format_bytes_as_text(
     encoding: &TextEncoding,
     special_chars: &SpecialCharConfig,
 ) -> String {
-    // First decode the bytes using the specified encoding
+    // First decode the bytes using the specified encoding.
+    //
+    // Issue #5: a frame used to be replaced with a hex dump in Txt mode when
+    // any byte was invalid (a raw SSID in a `list -a` reply, a multi-byte
+    // character split across reads). One bad byte hid the whole readable
+    // frame. Txt mode now decodes lossily and renders U+FFFD for bad bytes;
+    // Hex mode is still the explicit way to inspect raw bytes.
     let text = match encoding {
-        TextEncoding::Utf8 => {
-            // Try strict UTF-8 decoding first, fallback to lossy if it fails
-            match std::str::from_utf8(data) {
-                Ok(s) => s.to_string(),
-                Err(_) => {
-                    // If UTF-8 decoding fails, fall back to hex display
-                    return format_bytes_as_hex(data);
-                }
-            }
-        }
+        TextEncoding::Utf8 => String::from_utf8_lossy(data).into_owned(),
         TextEncoding::Gbk => {
             let (decoded, _, had_errors) = encoding_rs::GBK.decode(data);
             if had_errors {
-                // If GBK decoding has errors, fall back to hex display
-                return format_bytes_as_hex(data);
+                debug!(
+                    "GBK decode replaced invalid byte sequences in {} bytes",
+                    data.len()
+                );
             }
             decoded.into_owned()
         }
@@ -2339,5 +2338,65 @@ mod tests {
         assert!(manager.send_break(1).is_err());
         assert!(manager.get_pin_states().is_err());
         assert!(manager.send_data(b"x".to_vec()).is_err());
+    }
+
+    fn display_settings(encoding: TextEncoding) -> DisplaySettings {
+        DisplaySettings {
+            encoding,
+            ..DisplaySettings::default()
+        }
+    }
+
+    #[test]
+    fn txt_display_keeps_readable_text_around_invalid_utf8() {
+        // Issue #5: one invalid byte (e.g. a raw SSID in a `list -a` reply)
+        // used to turn the whole frame into a hex dump in Txt mode.
+        let mut data = "小欣家 -90\n[1][CH:8] OK".as_bytes().to_vec();
+        data.push(0xFF);
+        data.extend_from_slice(b" tail");
+
+        let text = format_data_for_display(&data, &display_settings(TextEncoding::Utf8));
+
+        assert!(text.contains("小欣家 -90"), "{text}");
+        assert!(text.contains("[1][CH:8] OK"), "{text}");
+        assert!(text.contains(" tail"), "{text}");
+        assert!(text.contains('\u{FFFD}'), "{text}");
+        assert!(
+            !text.starts_with("E5 B0 8F"),
+            "valid text must not become a hex dump: {text}"
+        );
+    }
+
+    #[test]
+    fn txt_display_decodes_valid_utf8_unchanged() {
+        let data = "中文 OK".as_bytes();
+        assert_eq!(
+            format_data_for_display(data, &display_settings(TextEncoding::Utf8)),
+            "中文 OK"
+        );
+    }
+
+    #[test]
+    fn gbk_display_replaces_invalid_bytes_instead_of_hex_dump() {
+        // 0x81 followed by 0x20 is not a valid GBK sequence.
+        let data = [0x81, 0x20, b'A'];
+        let text = format_data_for_display(&data, &display_settings(TextEncoding::Gbk));
+
+        assert!(text.contains('A'), "{text}");
+        assert!(
+            !text.contains("81 20 41"),
+            "GBK text must not become a hex dump: {text}"
+        );
+    }
+
+    #[test]
+    fn hex_display_remains_an_explicit_byte_dump() {
+        let mut settings = display_settings(TextEncoding::Utf8);
+        settings.format = ReceiveDisplayFormat::Hex;
+
+        assert_eq!(
+            format_data_for_display(&[0xE5, 0xB0, 0x8F, 0xFF], &settings),
+            "E5 B0 8F FF"
+        );
     }
 }
