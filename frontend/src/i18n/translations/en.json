@@ -211,7 +211,12 @@
     "reduceTransparency": "Reduce transparency",
     "reduceTransparencyDesc": "Use solid surfaces instead of glass effects",
     "highContrast": "High contrast",
-    "highContrastDesc": "Stronger borders, solid surfaces and higher text contrast"
+    "highContrastDesc": "Stronger borders, solid surfaces and higher text contrast",
+    "frameModeTimeout": "Timeout",
+    "frameModeCombined": "Combined",
+    "frameTimeoutLabel": "Timeout",
+    "frameTimeoutRange": "ms (10-1000)",
+    "customDelimiterPlaceholder": "e.g., 0D 0A or 1B5D"
   },
   "common": {
     "text": "Text",

@@ -790,7 +790,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                             className="flex-1 rounded-none text-xs h-7"
                             onClick={() => handleModeChange(mode)}
                           >
-                            {mode}
+                            {mode === 'Timeout' ? t('settings.frameModeTimeout') : t('settings.frameModeCombined')}
                           </Button>
                         ))}
                       </div>
@@ -799,7 +799,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                     {/* Timeout setting - always shown since both modes use timeout */}
                     <div className="flex items-center gap-2">
                       <span className="text-xs w-14" style={{ color: colors.textSecondary }}>
-                        Timeout:
+                        {t('settings.frameTimeoutLabel')}:
                       </span>
                       <Input
                         type="number"
@@ -811,7 +811,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                         className="w-20 h-7 text-xs text-right"
                       />
                       <span className="text-xs" style={{ color: colors.textTertiary }}>
-                        ms (10-1000)
+                        {t('settings.frameTimeoutRange')}
                       </span>
                     </div>
 
@@ -848,7 +848,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                               type="text"
                               value={customDelimiterHex}
                               onChange={(e) => handleCustomDelimiterChange(e.target.value)}
-                              placeholder="e.g., 0D 0A or 1B5D"
+                              placeholder={t('settings.customDelimiterPlaceholder')}
                               className={`flex-1 h-7 text-xs font-mono ${customDelimiterError ? 'border-destructive' : ''}`}
                             />
                             {customDelimiterError && (
