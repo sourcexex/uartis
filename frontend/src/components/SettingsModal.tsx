@@ -3,6 +3,7 @@ import {
   Folder,
   Moon,
   Sun,
+  Monitor,
   ChevronDown,
   ChevronUp,
   Loader2,
@@ -102,10 +103,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
     themeMode,
     setThemeMode,
     colors,
+    accent,
+    setAccent,
+    glassStrength,
+    setGlassStrength,
     reducedTransparency,
     setReducedTransparency,
     highContrast,
     setHighContrast,
+    reducedMotion,
+    setReducedMotion,
   } = useTheme();
   const glassSupported = supportsBackdropFilter();
   const { language, setLanguage, t } = useLanguage();
@@ -456,24 +463,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
             </Label>
             <Card className="p-1" style={{ backgroundColor: colors.bgMain, borderColor: colors.borderLight }}>
               <div className="flex">
-                <Button
-                  variant={themeMode === 'light' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="flex-1 gap-1"
-                  onClick={() => setThemeMode('light')}
-                >
-                  <Sun size={12} />
-                  <span>{t('settings.light')}</span>
-                </Button>
-                <Button
-                  variant={themeMode === 'dark' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="flex-1 gap-1"
-                  onClick={() => setThemeMode('dark')}
-                >
-                  <Moon size={12} />
-                  <span>{t('settings.dark')}</span>
-                </Button>
+                {(
+                  [
+                    { mode: 'light', icon: Sun, label: 'settings.light' },
+                    { mode: 'dark', icon: Moon, label: 'settings.dark' },
+                    { mode: 'system', icon: Monitor, label: 'settings.system' },
+                  ] as const
+                ).map(({ mode, icon: Icon, label }) => (
+                  <Button
+                    key={mode}
+                    variant={themeMode === mode ? 'default' : 'ghost'}
+                    size="sm"
+                    className="flex-1 gap-1"
+                    onClick={() => setThemeMode(mode)}
+                  >
+                    <Icon size={12} />
+                    <span>{t(label)}</span>
+                  </Button>
+                ))}
               </div>
             </Card>
             <div
@@ -507,6 +514,86 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ open, onOpenChange }) => 
                 </span>
               </div>
               <Switch checked={highContrast} onCheckedChange={setHighContrast} />
+            </div>
+            <div
+              className="flex items-center justify-between gap-4 px-2 py-2"
+              style={{ borderTop: `1px solid ${colors.borderLight}` }}
+            >
+              <div className="flex flex-col">
+                <span className="text-sm" style={{ color: colors.textPrimary }}>
+                  {t('settings.accentColor')}
+                </span>
+                <span className="text-xs" style={{ color: colors.textTertiary }}>
+                  {t('settings.accentColorDesc')}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {(
+                  [
+                    { value: 'blue', color: '#0A84FF', label: 'settings.accentBlue' },
+                    { value: 'green', color: '#30D158', label: 'settings.accentGreen' },
+                    { value: 'purple', color: '#BF5AF2', label: 'settings.accentPurple' },
+                    { value: 'orange', color: '#FF9F0A', label: 'settings.accentOrange' },
+                  ] as const
+                ).map(({ value, color, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-label={t(label)}
+                    aria-pressed={accent === value}
+                    title={t(label)}
+                    onClick={() => setAccent(value)}
+                    className={`h-6 w-6 rounded-full border-2 transition-transform ${
+                      accent === value ? 'scale-110' : 'hover:scale-105'
+                    }`}
+                    style={{
+                      backgroundColor: color,
+                      borderColor: accent === value ? colors.textPrimary : colors.borderLight,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div
+              className="flex items-center justify-between gap-4 px-2 py-2"
+              style={{ borderTop: `1px solid ${colors.borderLight}` }}
+            >
+              <div className="flex flex-col">
+                <span className="text-sm" style={{ color: colors.textPrimary }}>
+                  {t('settings.glassStrength')}
+                </span>
+                <span className="text-xs" style={{ color: colors.textTertiary }}>
+                  {t('settings.glassStrengthDesc')}
+                </span>
+              </div>
+              <Select
+                value={glassStrength}
+                onValueChange={(value) => setGlassStrength(value as 'soft' | 'standard' | 'strong')}
+                disabled={!glassSupported || reducedTransparency}
+              >
+                <SelectTrigger className="h-7 w-24 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="soft">{t('settings.glassSoft')}</SelectItem>
+                  <SelectItem value="standard">{t('settings.glassStandard')}</SelectItem>
+                  <SelectItem value="strong">{t('settings.glassStrong')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div
+              className="flex items-center justify-between gap-4 px-2 py-2"
+              style={{ borderTop: `1px solid ${colors.borderLight}` }}
+            >
+              <div className="flex flex-col">
+                <span className="text-sm" style={{ color: colors.textPrimary }}>
+                  {t('settings.reduceMotion')}
+                </span>
+                <span className="text-xs" style={{ color: colors.textTertiary }}>
+                  {t('settings.reduceMotionDesc')}
+                </span>
+              </div>
+              <Switch checked={reducedMotion} onCheckedChange={setReducedMotion} />
             </div>
           </div>
 

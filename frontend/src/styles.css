@@ -182,6 +182,65 @@
     --app-shadow-3: 0 24px 60px rgba(0, 0, 0, 0.18);
   }
 
+  /* Accent presets (shared by light/dark; overrides the blue defaults). */
+  [data-accent='green'] {
+    --app-accent: #30d158;
+    --app-accent-hover: #28b84c;
+    --app-accent-soft: rgba(48, 209, 88, 0.08);
+    --app-accent-muted: rgba(48, 209, 88, 0.16);
+    --app-on-accent: #000000;
+    --primary: 142 69% 52%;
+    --primary-foreground: 0 0% 0%;
+    --ring: 142 69% 52%;
+  }
+
+  [data-accent='purple'] {
+    --app-accent: #bf5af2;
+    --app-accent-hover: #a94be0;
+    --app-accent-soft: rgba(191, 90, 242, 0.08);
+    --app-accent-muted: rgba(191, 90, 242, 0.16);
+    --app-on-accent: #ffffff;
+    --primary: 289 85% 65%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 289 85% 65%;
+  }
+
+  [data-accent='orange'] {
+    --app-accent: #ff9f0a;
+    --app-accent-hover: #e68a00;
+    --app-accent-soft: rgba(255, 159, 10, 0.08);
+    --app-accent-muted: rgba(255, 159, 10, 0.16);
+    --app-on-accent: #000000;
+    --primary: 36 100% 52%;
+    --primary-foreground: 0 0% 0%;
+    --ring: 36 100% 52%;
+  }
+
+  /* Glass intensity: only changes the blur cost, not readability tokens. */
+  [data-glass='soft'] {
+    --app-glass-blur: 8px;
+    --app-glass-saturate: 110%;
+  }
+
+  [data-glass='standard'] {
+    --app-glass-blur: 14px;
+    --app-glass-saturate: 120%;
+  }
+
+  [data-glass='strong'] {
+    --app-glass-blur: 20px;
+    --app-glass-saturate: 130%;
+  }
+
+  [data-reduced-motion='true'] *,
+  [data-reduced-motion='true'] *::before,
+  [data-reduced-motion='true'] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
   * {
     @apply border-border;
   }

@@ -216,7 +216,21 @@
     "frameModeCombined": "Combined",
     "frameTimeoutLabel": "Timeout",
     "frameTimeoutRange": "ms (10-1000)",
-    "customDelimiterPlaceholder": "e.g., 0D 0A or 1B5D"
+    "customDelimiterPlaceholder": "e.g., 0D 0A or 1B5D",
+    "system": "System",
+    "accentColor": "Accent color",
+    "accentColorDesc": "Used for buttons, focus rings and selected states",
+    "accentBlue": "Blue",
+    "accentGreen": "Green",
+    "accentPurple": "Purple",
+    "accentOrange": "Orange",
+    "glassStrength": "Glass intensity",
+    "glassStrengthDesc": "Blur strength for shell and overlays",
+    "glassSoft": "Soft",
+    "glassStandard": "Standard",
+    "glassStrong": "Strong",
+    "reduceMotion": "Reduce motion",
+    "reduceMotionDesc": "Disable transitions and non-essential animations"
   },
   "common": {
     "text": "Text",

@@ -216,7 +216,21 @@
     "frameModeCombined": "组合",
     "frameTimeoutLabel": "超时",
     "frameTimeoutRange": "毫秒（10-1000）",
-    "customDelimiterPlaceholder": "例如：0D 0A 或 1B5D"
+    "customDelimiterPlaceholder": "例如：0D 0A 或 1B5D",
+    "system": "跟随系统",
+    "accentColor": "强调色",
+    "accentColorDesc": "用于按钮、焦点环与选中态",
+    "accentBlue": "蓝色",
+    "accentGreen": "绿色",
+    "accentPurple": "紫色",
+    "accentOrange": "橙色",
+    "glassStrength": "毛玻璃强度",
+    "glassStrengthDesc": "调整壳层与浮层的模糊强度",
+    "glassSoft": "轻",
+    "glassStandard": "标准",
+    "glassStrong": "强",
+    "reduceMotion": "减少动效",
+    "reduceMotionDesc": "关闭过渡与非必要动画"
   },
   "common": {
     "text": "文本",
