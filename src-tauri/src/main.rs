@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{Manager, State};
 
 mod bus;
 mod framing;
@@ -629,6 +629,16 @@ fn main() {
             // Release builds have no visible stderr; keep diagnostics on disk.
             if let Err(error) = logger::init(app.handle()) {
                 eprintln!("failed to initialise file logger: {error}");
+            }
+            // T1 spike: Windows/Linux use the self-drawn title bar. macOS keeps
+            // native decorations with titleBarStyle=Overlay so the traffic
+            // lights remain native. The real implementation should move this
+            // to platform-specific Tauri config to avoid a one-frame flash.
+            #[cfg(not(target_os = "macos"))]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(error) = window.set_decorations(false) {
+                    eprintln!("failed to remove native window decorations: {error}");
+                }
             }
             spawn_frame_pump(app);
             Ok(())

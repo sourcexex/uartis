@@ -1,6 +1,6 @@
 # 自绘标题栏计划（跨平台）
 
-> 状态：**方案已确认（macOS 保留原生红绿灯），T1 spike 待执行**。
+> 状态：**方案已确认（macOS 保留原生红绿灯）；T1 Windows spike 已完成并合入 develop，macOS/Linux 待测**。
 > 目标版本：**v1.2.0**（与 UI 视觉优化同批，先做壳层再做业务面板）。
 > 关联：[`OPTIMIZATION-PLAN.zh-CN.md`](OPTIMIZATION-PLAN.zh-CN.md) §5.5、[`EXECUTION-PLAN.zh-CN.md`](EXECUTION-PLAN.zh-CN.md) Sprint 2。
 > 决策变更：本计划**取代**原“三平台保留原生标题栏、不自绘”的决策。
@@ -154,7 +154,9 @@
 - 当前开发机是 Windows，只能完整验证 Windows；macOS/Linux 需要你的实机/虚拟机，或 CI 构建后本地安装验证（CI 不跑 GUI）。
 - spike 不发布、不合并 main；结论写入文档后再决定 T2。
 
-**排期**：2–3 天。建议顺序：**T1（2–3d）→ UI V1（2–3d）→ T2（3–4d）**；T1 与 V1 也可并行，但 T2 必须等两者完成。
+> Windows spike 结果（2026-11-06）：自绘栏/按钮/双击最大化/拖动/最小化通过，Snap Layouts/DPI/macOS/Linux 待补测；详见 [`TITLEBAR-SPIKE-NOTES.zh-CN.md`](TITLEBAR-SPIKE-NOTES.zh-CN.md) 与截图 `assets/titlebar-spike-windows.png`。
+
+**排期**：2–3 天。建议顺序：**T1（2–3d，已完成 Windows）→ UI V1（2–3d，已完成）→ T2（3–4d）**；T2 必须等 T1 的 macOS/Linux 验证完成。
 
 ## 6. 风险与缓解
 
