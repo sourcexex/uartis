@@ -38,6 +38,71 @@
     /* Additional custom properties for app-specific colors */
     --success: 142 69% 52%; /* #30D158 */
     --warning: 51 100% 52%; /* #FFD60A */
+
+    /* App semantic tokens (single source of truth for ThemeContext) */
+    color-scheme: dark;
+    --app-bg-main: #1e1e1e;
+    --app-bg-sidebar: #262626;
+    --app-bg-header: #2d2d2d;
+    --app-bg-surface: #333333;
+    --app-bg-input: rgba(255, 255, 255, 0.1);
+    --app-bg-hover: rgba(255, 255, 255, 0.1);
+
+    --app-text-primary: #ffffff;
+    --app-text-secondary: #a0a0a0;
+    --app-text-tertiary: #707070;
+    --app-text-placeholder: #606060;
+
+    --app-border: rgba(255, 255, 255, 0.1);
+    --app-border-light: rgba(255, 255, 255, 0.05);
+    --app-border-dark: rgba(0, 0, 0, 0.4);
+
+    --app-accent: #0a84ff;
+    --app-accent-hover: #0071e3;
+    --app-accent-soft: rgba(10, 132, 255, 0.06);
+    --app-accent-muted: rgba(10, 132, 255, 0.12);
+    --app-on-accent: #ffffff;
+    --app-match-text: #000000;
+
+    --app-success: #30d158;
+    --app-danger: #ff453a;
+    --app-error: #dc2626;
+    --app-warning: #ffd60a;
+
+    --app-button-secondary-bg: rgba(255, 255, 255, 0.05);
+    --app-button-secondary-hover: rgba(255, 255, 255, 0.1);
+    --app-log-sent-bg: rgba(10, 132, 255, 0.05);
+    --app-log-received-bg: rgba(48, 209, 88, 0.05);
+
+    /* Glass/material tokens */
+    --app-glass-bg: rgba(45, 45, 45, 0.72);
+    --app-glass-bg-strong: rgba(45, 45, 45, 0.86);
+    --app-glass-border: rgba(255, 255, 255, 0.1);
+    --app-glass-highlight: rgba(255, 255, 255, 0.06);
+    --app-glass-blur: 14px;
+    --app-glass-saturate: 120%;
+
+    /* Shape, spacing, elevation, motion */
+    --app-radius-sm: 4px;
+    --app-radius-md: 6px;
+    --app-radius-lg: 8px;
+    --app-radius-xl: 12px;
+    --app-space-1: 4px;
+    --app-space-2: 8px;
+    --app-space-3: 12px;
+    --app-space-4: 16px;
+    --app-space-5: 20px;
+    --app-space-6: 24px;
+    --app-space-8: 32px;
+    --app-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.18);
+    --app-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.28);
+    --app-shadow-3: 0 24px 60px rgba(0, 0, 0, 0.45);
+    --app-motion-fast: 120ms;
+    --app-motion-normal: 180ms;
+    --app-motion-slow: 240ms;
+    --app-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --app-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+    --app-font-mono: 'SF Mono', 'Menlo', 'Monaco', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   }
 
   /* Light Theme */
@@ -69,6 +134,48 @@
     --border: 0 0% 0% / 0.1; /* rgba(0,0,0,0.1) */
     --input: 0 0% 0% / 0.1; /* rgba(0,0,0,0.1) */
     --ring: 213 100% 52%; /* #0A84FF - accent */
+
+    color-scheme: light;
+    --app-bg-main: #f5f5f7;
+    --app-bg-sidebar: #ffffff;
+    --app-bg-header: #f5f5f7;
+    --app-bg-surface: #ffffff;
+    --app-bg-input: #ffffff;
+    --app-bg-hover: rgba(0, 0, 0, 0.05);
+
+    --app-text-primary: #1d1d1f;
+    --app-text-secondary: #6e6e73;
+    --app-text-tertiary: #86868b;
+    --app-text-placeholder: #aeaeb2;
+
+    --app-border: rgba(0, 0, 0, 0.1);
+    --app-border-light: rgba(0, 0, 0, 0.05);
+    --app-border-dark: rgba(0, 0, 0, 0.2);
+
+    --app-accent: #0a84ff;
+    --app-accent-hover: #0071e3;
+    --app-accent-soft: rgba(10, 132, 255, 0.06);
+    --app-accent-muted: rgba(10, 132, 255, 0.12);
+    --app-on-accent: #ffffff;
+    --app-match-text: #000000;
+
+    --app-success: #30d158;
+    --app-danger: #ff453a;
+    --app-error: #dc2626;
+    --app-warning: #ffd60a;
+
+    --app-button-secondary-bg: rgba(0, 0, 0, 0.05);
+    --app-button-secondary-hover: rgba(0, 0, 0, 0.1);
+    --app-log-sent-bg: rgba(10, 132, 255, 0.05);
+    --app-log-received-bg: rgba(48, 209, 88, 0.05);
+
+    --app-glass-bg: rgba(255, 255, 255, 0.72);
+    --app-glass-bg-strong: rgba(255, 255, 255, 0.86);
+    --app-glass-border: rgba(0, 0, 0, 0.1);
+    --app-glass-highlight: rgba(255, 255, 255, 0.6);
+    --app-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.08);
+    --app-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --app-shadow-3: 0 24px 60px rgba(0, 0, 0, 0.18);
   }
 
   * {
@@ -76,7 +183,14 @@
   }
 
   html {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+    font-family: var(--app-font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--app-accent-muted);
+    color: var(--app-text-primary);
   }
 
   body {
@@ -122,6 +236,46 @@
 }
 
 @layer components {
+  /*
+   * Glass surfaces are intentionally opt-in: only shell chrome and overlays
+   * should use them. Log text and editors must stay opaque for readability and
+   * scroll performance.
+   */
+  .glass-surface,
+  .glass-surface-strong {
+    border: 1px solid var(--app-glass-border);
+    box-shadow:
+      inset 0 1px 0 var(--app-glass-highlight),
+      var(--app-shadow-1);
+    -webkit-backdrop-filter: blur(var(--app-glass-blur)) saturate(var(--app-glass-saturate));
+    backdrop-filter: blur(var(--app-glass-blur)) saturate(var(--app-glass-saturate));
+  }
+
+  .glass-surface {
+    background: var(--app-glass-bg);
+  }
+
+  .glass-surface-strong {
+    background: var(--app-glass-bg-strong);
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-surface,
+    .glass-surface-strong {
+      background: var(--app-bg-surface);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
+  [data-reduced-transparency='true'] .glass-surface,
+  [data-reduced-transparency='true'] .glass-surface-strong {
+    background: var(--app-bg-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+
   .panel {
     @apply bg-macos-header rounded-lg border border-white/10 shadow-lg;
   }

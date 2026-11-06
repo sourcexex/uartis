@@ -158,3 +158,17 @@
 - glass 通过 `.glass` 类集中控制；关闭时移除类即可回退纯色。
 - Mica 独立设置开关；默认关闭。
 - 保留 v1.1.1 稳定 tag 作为回滚基线。
+
+## 9. 实施记录
+
+### V1 设计 token/主题基础（2026-11-06，已完成基础层）
+
+- 新增 `frontend/src/theme/tokens.ts`：React 层只引用 `var(--app-*)`，不再在 JS 里维护第二套 hex 调色板。
+- `ThemeContext` 改为 CSS 变量桥接；亮/暗切换仍由 `data-theme` 驱动，切换逻辑未变。
+- `styles.css` 增加 `--app-*` 语义色、字体、间距、圆角、阴影、动效、玻璃 token；`color-scheme` 防闪烁。
+- 新增 `.glass-surface` / `.glass-surface-strong` 与 `@supports` / `data-reduced-transparency` 回退；**尚未应用到壳层**（V2/V4 接入）。
+- 清理业务组件硬编码：`QuickCommandPanel` 的 accent alpha、`SendPanel` 警告/激活色、`SettingsModal` 绿色状态、`LogViewer` 匹配文字色。
+- 新增 `tokens.test.ts`：保证 React token 全部是 `--app-*` CSS 变量。
+- 验证：`tsc` / ESLint / Prettier / Vitest（9）/ Vite build / Tauri NSIS 构建通过；Windows 150% 冒烟截图正常。
+- 未做：玻璃表面实际应用、设置里的“减少透明”开关、亮/暗/高对比截图基线（留到 V2/V4/V6）。
+

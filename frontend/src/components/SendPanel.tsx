@@ -550,7 +550,7 @@ const SendPanel: React.FC<SendPanelProps> = ({
                           style={{
                             backgroundColor: checksumConfig.type !== 'None' ? colors.accent : colors.bgInput,
                             borderColor: colors.borderLight,
-                            color: checksumConfig.type !== 'None' ? '#ffffff' : colors.textSecondary,
+                            color: checksumConfig.type !== 'None' ? colors.onAccent : colors.textSecondary,
                           }}
                         >
                           <SelectValue />
@@ -814,8 +814,8 @@ const SendPanel: React.FC<SendPanelProps> = ({
             {/* Rate guard: scheduled sending faster than the line can carry */}
             {showRateWarning && (
               <div className="mt-2 flex items-center space-x-1.5 flex-shrink-0">
-                <AlertTriangle size={13} style={{ color: '#f59e0b' }} className="flex-shrink-0" />
-                <span className="text-xs" style={{ color: '#f59e0b' }}>
+                <AlertTriangle size={13} style={{ color: colors.warning }} className="flex-shrink-0" />
+                <span className="text-xs" style={{ color: colors.warning }}>
                   {t('sendPanel.rateExceeded')
                     .replace('{rate}', formatRate(requiredRateBps))
                     .replace('{capacity}', formatRate(lineCapacityBps))}

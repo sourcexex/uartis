@@ -374,7 +374,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
             className="flex items-center px-3 py-1 group"
             style={{
               borderBottom: `1px solid ${colors.borderLight}`,
-              backgroundColor: command.selected ? `${colors.accent}10` : 'transparent',
+              backgroundColor: command.selected ? colors.accentSoft : 'transparent',
             }}
           >
             {/* Selection Checkbox */}
@@ -526,7 +526,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                     key={list.id}
                     className="flex items-center px-3 py-2 cursor-pointer group"
                     style={{
-                      backgroundColor: list.id === currentListId ? `${colors.accent}20` : 'transparent',
+                      backgroundColor: list.id === currentListId ? colors.accentMuted : 'transparent',
                     }}
                     onClick={() => {
                       if (editingListId !== list.id) {
@@ -541,7 +541,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor =
-                        list.id === currentListId ? `${colors.accent}20` : 'transparent';
+                        list.id === currentListId ? colors.accentMuted : 'transparent';
                     }}
                   >
                     {editingListId === list.id ? (
@@ -670,7 +670,7 @@ const QuickCommandPanel: React.FC<QuickCommandPanelProps> = ({
             <div
               className="flex items-center space-x-1 px-2 py-1 rounded text-xs"
               style={{
-                backgroundColor: `${colors.accent}20`,
+                backgroundColor: colors.accentMuted,
                 color: colors.accent,
               }}
             >
