@@ -244,8 +244,8 @@
     "consoleCustomColor": "自定义颜色",
     "consoleFontSize": "控制台字号",
     "consoleFontSizeDesc": "日志文字大小",
-    "directionColors": "TX/RX 颜色",
-    "directionColorsDesc": "用蓝/绿色区分发送与接收"
+    "directionBackground": "TX/RX 行背景",
+    "directionBackgroundDesc": "为发送/接收行显示淡蓝/淡绿背景"
   },
   "common": {
     "text": "文本",

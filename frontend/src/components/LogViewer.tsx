@@ -56,12 +56,13 @@ interface LogViewerProps {
 }
 
 const LogViewer: React.FC<LogViewerProps> = ({ logs, onClear, onExport, onResync, isConnected }) => {
-  const { colors, directionColors } = useTheme();
+  const { colors, directionBackground } = useTheme();
   const { t } = useTranslation();
-  const txColor = directionColors ? colors.accent : colors.textSecondary;
-  const rxColor = directionColors ? colors.success : colors.textSecondary;
-  const txBackground = directionColors ? colors.logSentBg : 'transparent';
-  const rxBackground = directionColors ? colors.logReceivedBg : 'transparent';
+  // Text/border keep the semantic TX/RX colors; only the row tint is optional.
+  const txColor = colors.accent;
+  const rxColor = colors.success;
+  const txBackground = directionBackground ? colors.logSentBg : 'transparent';
+  const rxBackground = directionBackground ? colors.logReceivedBg : 'transparent';
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   /** Identity of the last rendered entry — changes even when the capped
