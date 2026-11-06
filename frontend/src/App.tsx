@@ -796,18 +796,19 @@ function App() {
   );
 
   return (
-    <div className="h-screen flex flex-col" style={{ backgroundColor: colors.bgMain, color: colors.textPrimary }}>
+    <div
+      className="h-screen flex flex-col app-shell"
+      style={{ backgroundColor: colors.bgMain, color: colors.textPrimary }}
+    >
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
         <div
-          className="flex flex-col relative z-20 transition-[width] duration-200 ease-out"
+          className="flex flex-col relative z-20 transition-[width] duration-200 ease-out glass-surface"
           style={{
             width: effectiveSidebarWidth,
             minWidth: effectiveSidebarWidth,
-            backgroundColor: colors.bgSidebar,
             borderRight: `1px solid ${colors.borderDark}`,
-            backdropFilter: 'blur(20px)',
           }}
         >
           {/* Collapsed Sidebar View */}

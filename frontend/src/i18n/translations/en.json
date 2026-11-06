@@ -207,7 +207,9 @@
     "networkError": "Unable to check for updates. Please check your internet connection.",
     "noReleases": "No releases available",
     "noExeFound": "No compatible installer found in the latest release",
-    "retryDownload": "Retry Download"
+    "retryDownload": "Retry Download",
+    "reduceTransparency": "Reduce transparency",
+    "reduceTransparencyDesc": "Use solid surfaces instead of glass effects"
   },
   "common": {
     "text": "Text",
