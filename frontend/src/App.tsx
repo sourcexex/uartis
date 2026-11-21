@@ -209,6 +209,9 @@ function App() {
 
   // Refs for resize handling
   const mainContentRef = useRef<HTMLDivElement>(null);
+  const logViewerRef = useRef<HTMLDivElement>(null);
+  const layoutMetricsRef = useRef<{ containerHeight: number; logHeight: number } | null>(null);
+  const lastDraggedLogHeightRef = useRef<number | null>(null);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const verticalResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -260,12 +263,6 @@ function App() {
     localStorage.setItem(STORAGE_KEY_SIDEBAR_COLLAPSED, sidebarCollapsed.toString());
   }, [sidebarCollapsed]);
 
-  useEffect(() => {
-    if (logViewerHeight !== null) {
-      localStorage.setItem(STORAGE_KEY_LOG_VIEWER_HEIGHT, logViewerHeight.toString());
-    }
-  }, [logViewerHeight]);
-
   // Adjust log viewer height when send panel min height changes
   useEffect(() => {
     if (!mainContentRef.current || logViewerHeight === null) return;
@@ -278,22 +275,56 @@ function App() {
     }
   }, [sendPanelMinHeight, logViewerHeight]);
 
-  // A persisted log height can be too tall after the window shrinks; clamp it
-  // on every resize so the send panel never gets squeezed off-screen.
+  // Track the live log-viewer height so a window resize can transfer the
+  // vertical delta to it. Keeping the send panel at a constant height is what
+  // stops its textarea/controls from growing and shrinking with the window.
   useEffect(() => {
-    const clampLogViewerHeight = () => {
+    const container = mainContentRef.current;
+    const logViewer = logViewerRef.current;
+    if (!container || !logViewer) return;
+
+    layoutMetricsRef.current = {
+      containerHeight: container.getBoundingClientRect().height,
+      logHeight: logViewer.getBoundingClientRect().height,
+    };
+  }, [logViewerHeight, sendPanelMinHeight]);
+
+  // A persisted log height can be too tall after the window shrinks; clamp it
+  // on every resize so the send panel never gets squeezed off-screen. The same
+  // handler adds the window's height delta to the log viewer, leaving the send
+  // panel height unchanged (falling back to its minimum when space runs out).
+  useEffect(() => {
+    const handleWindowResize = () => {
       const container = mainContentRef.current;
       if (!container) return;
+
+      const nextContainerHeight = container.getBoundingClientRect().height;
+      const previous = layoutMetricsRef.current;
+      if (!previous) return;
+
+      const delta = nextContainerHeight - previous.containerHeight;
+      if (delta === 0) return;
+
+      const maxLogViewerHeight = nextContainerHeight - sendPanelMinHeight;
       setLogViewerHeight((current) => {
-        if (current === null) return current;
-        const max = container.getBoundingClientRect().height - sendPanelMinHeight;
-        return Math.max(MIN_LOG_VIEWER_HEIGHT, Math.min(current, max));
+        const currentLogHeight = current ?? previous.logHeight;
+        const nextLogHeight = currentLogHeight + delta;
+        return Math.max(
+          MIN_LOG_VIEWER_HEIGHT,
+          Math.min(nextLogHeight, Math.max(MIN_LOG_VIEWER_HEIGHT, maxLogViewerHeight))
+        );
       });
+
+      // Keep the baseline in sync immediately; the effect above refreshes it
+      // from the DOM after this render (clamping may have adjusted the value).
+      layoutMetricsRef.current = {
+        containerHeight: nextContainerHeight,
+        logHeight: previous.logHeight + delta,
+      };
     };
 
-    clampLogViewerHeight();
-    window.addEventListener('resize', clampLogViewerHeight);
-    return () => window.removeEventListener('resize', clampLogViewerHeight);
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
   }, [sendPanelMinHeight]);
 
   // Window resize handler for auto-collapse
@@ -374,12 +405,20 @@ function App() {
       const newHeight = verticalResizeRef.current.startHeight + deltaY;
       const maxHeight = mainContentRect.height - sendPanelMinHeight;
       const clampedHeight = Math.max(MIN_LOG_VIEWER_HEIGHT, Math.min(maxHeight, newHeight));
+      lastDraggedLogHeightRef.current = clampedHeight;
       setLogViewerHeight(clampedHeight);
     },
     [isResizingVertical, sendPanelMinHeight]
   );
 
   const handleVerticalResizeEnd = useCallback(() => {
+    // Persist only the user's split. Window-resize adjustments are transient
+    // and must not overwrite the saved height with a clamped/adapted value.
+    const draggedHeight = lastDraggedLogHeightRef.current;
+    if (draggedHeight !== null) {
+      localStorage.setItem(STORAGE_KEY_LOG_VIEWER_HEIGHT, draggedHeight.toString());
+    }
+    lastDraggedLogHeightRef.current = null;
     setIsResizingVertical(false);
     verticalResizeRef.current = null;
   }, []);
@@ -959,6 +998,7 @@ function App() {
         <div ref={mainContentRef} className="flex-1 flex flex-col relative" style={{ backgroundColor: colors.bgMain }}>
           {/* Log Viewer */}
           <div
+            ref={logViewerRef}
             className="flex flex-col min-h-0"
             style={{
               height: logViewerHeight !== null ? logViewerHeight : undefined,
