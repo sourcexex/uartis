@@ -211,6 +211,7 @@ function App() {
   const mainContentRef = useRef<HTMLDivElement>(null);
   const logViewerRef = useRef<HTMLDivElement>(null);
   const layoutMetricsRef = useRef<{ containerHeight: number; logHeight: number } | null>(null);
+  const lastDraggedLogHeightRef = useRef<number | null>(null);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const verticalResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -261,12 +262,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SIDEBAR_COLLAPSED, sidebarCollapsed.toString());
   }, [sidebarCollapsed]);
-
-  useEffect(() => {
-    if (logViewerHeight !== null) {
-      localStorage.setItem(STORAGE_KEY_LOG_VIEWER_HEIGHT, logViewerHeight.toString());
-    }
-  }, [logViewerHeight]);
 
   // Adjust log viewer height when send panel min height changes
   useEffect(() => {
@@ -410,12 +405,20 @@ function App() {
       const newHeight = verticalResizeRef.current.startHeight + deltaY;
       const maxHeight = mainContentRect.height - sendPanelMinHeight;
       const clampedHeight = Math.max(MIN_LOG_VIEWER_HEIGHT, Math.min(maxHeight, newHeight));
+      lastDraggedLogHeightRef.current = clampedHeight;
       setLogViewerHeight(clampedHeight);
     },
     [isResizingVertical, sendPanelMinHeight]
   );
 
   const handleVerticalResizeEnd = useCallback(() => {
+    // Persist only the user's split. Window-resize adjustments are transient
+    // and must not overwrite the saved height with a clamped/adapted value.
+    const draggedHeight = lastDraggedLogHeightRef.current;
+    if (draggedHeight !== null) {
+      localStorage.setItem(STORAGE_KEY_LOG_VIEWER_HEIGHT, draggedHeight.toString());
+    }
+    lastDraggedLogHeightRef.current = null;
     setIsResizingVertical(false);
     verticalResizeRef.current = null;
   }, []);
